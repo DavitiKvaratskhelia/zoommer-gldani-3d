@@ -54,6 +54,23 @@ const { root, groups } = buildModel();
 scene.add(root);
 groups.ceiling.visible = false; // საწყისად ჭერი მოხსნილია
 
+// ვინილის ჩანართები იატაკიდან მხოლოდ 4 მმ-ითაა ამოწეული — შორიდან სიღრმის ბუფერი მათ
+// ვეღარ არჩევს იატაკისგან და ჩნდება წერტილები/ციმციმი (z-fighting). სანახავში ვინილს
+// ვაძლევთ სიღრმის წანაცვლებას; GLB-ის ექსპორტისას ორიგინალი მასალები ბრუნდება.
+const inlayMats = new Map(); // mesh → [ორიგინალი (GLB-სთვის), სანახავის ასლი]
+for (const m of groups.floor.children) {
+  if (!m.isMesh || m.userData.info?.kind !== 'იატაკის ვინილი') continue;
+  const view = m.material.clone();
+  view.polygonOffset = true;
+  view.polygonOffsetFactor = -2;
+  view.polygonOffsetUnits = -4;
+  inlayMats.set(m, [m.material, view]);
+  m.material = view;
+}
+const swapInlayMaterials = (forExport) => {
+  for (const [m, [orig, view]] of inlayMats) m.material = forExport ? orig : view;
+};
+
 const bbox = new THREE.Box3().setFromObject(root);
 const center = bbox.getCenter(new THREE.Vector3());
 const size = bbox.getSize(new THREE.Vector3());
@@ -165,6 +182,12 @@ let viewName = 'home';
 let userMoved = false;
 let lastPersp = null;
 let needsRender = true;
+// „ცენტრში დაბრუნება“ (ნაგულისხმევად ჩართული): მაღაზიის ცენტრი რჩება ეკრანის ცენტრში —
+// ზუმი ცენტრისკენ მიდის, გადაადგილების შემდეგ ხედი რბილად ბრუნდება ცენტრში.
+// ფოკუსი (ორჯერ დაჭერა) ძალაშია, სანამ ობიექტი არჩეულია. გამორთვისას — ძველი რეჟიმი.
+let autoCenter = true;
+let focused = null;
+let dragging = false;
 
 let composer = null, aoPass = null;
 const AO_ON = true;
@@ -193,7 +216,7 @@ function makeControls(cam, target) {
   controls.enableDamping = true;
   controls.dampingFactor = 0.09;
   controls.screenSpacePanning = true;
-  controls.zoomToCursor = true;
+  controls.zoomToCursor = !autoCenter;
   controls.rotateSpeed = 0.75;
   controls.zoomSpeed = 1.1;
   controls.panSpeed = 1.0;
@@ -203,7 +226,8 @@ function makeControls(cam, target) {
   controls.minZoom = 0.35;
   controls.maxZoom = 40;
   controls.enableRotate = cam !== ortho;
-  controls.addEventListener('start', () => { userMoved = true; cancelTween(); hideHint(); });
+  controls.addEventListener('start', () => { userMoved = true; dragging = true; cancelTween(); hideHint(); });
+  controls.addEventListener('end', () => { dragging = false; });
   controls.addEventListener('change', () => { needsRender = true; });
   controls.update();
 }
@@ -247,6 +271,7 @@ function useCamera(cam) {
 
 function setView(name, animate = true) {
   viewName = name;
+  focused = null;
   if (name !== 'fit') setActiveView(name);
   if (name === 'top' || (name === 'fit' && camera === ortho)) {
     if (camera === persp) {
@@ -283,6 +308,7 @@ function setView(name, animate = true) {
 // თავისუფალი არე (პანელების გარეშე) — მოდელი ცენტრდება ამ არეში
 function freeArea() {
   const w = stage.clientWidth, h = stage.clientHeight;
+  if (autoCenter) return { w, h, fw: w, fh: h }; // ცენტრი — ეკრანის ზუსტ ცენტრში
   const tb = $('.toolbar').getBoundingClientRect();
   let fw = w, fh = h;
   if (tb.height < h * 0.5 && tb.bottom > h - 4 && tb.width > w * 0.8) fh = Math.max(h * 0.5, tb.top); // ქვედა ზოლი (ტელეფონი)
@@ -291,6 +317,7 @@ function freeArea() {
 }
 function applyViewOffset() {
   const { w, h, fw, fh } = freeArea();
+  if (!w || !h) return { w, h, fw, fh };
   persp.aspect = fw / fh;
   persp.setViewOffset(fw, fh, 0, 0, w, h);
   persp.updateProjectionMatrix();
@@ -298,6 +325,7 @@ function applyViewOffset() {
 }
 function fitOrtho() {
   const { w, h, fw, fh } = freeArea();
+  if (!w || !h) return;
   const aspect = fw / fh;
   const m = 1.08;
   const p = dims.visible ? DIM_PAD : 0;
@@ -447,7 +475,7 @@ const STATUS = {
 function select(obj) {
   selected = obj;
   const card = $('#info');
-  if (!obj) { selHelper.visible = false; card.hidden = true; needsRender = true; return; }
+  if (!obj) { focused = null; selHelper.visible = false; card.hidden = true; needsRender = true; return; }
   selBox.setFromObject(obj);
   selHelper.visible = true;
   const inf = obj.userData.info;
@@ -477,6 +505,7 @@ function select(obj) {
 
 function focusOn(obj) {
   if (!obj) return;
+  focused = obj;
   const b = new THREE.Box3().setFromObject(obj);
   const c = b.getCenter(new THREE.Vector3());
   const cs = [];
@@ -542,6 +571,16 @@ $('#zoom-out').addEventListener('click', () => zoomBy(1 / 1.35));
 $('#info-close').addEventListener('click', () => select(null));
 $('#info-focus').addEventListener('click', () => focusOn(selected));
 
+function setAutoCenter(on) {
+  autoCenter = on;
+  controls.zoomToCursor = !on;
+  $('#auto-center').setAttribute('aria-pressed', String(on));
+  applyViewOffset();
+  fitOrtho();
+  needsRender = true;
+}
+$('#auto-center').addEventListener('click', () => setAutoCenter(!autoCenter));
+
 // სრული ეკრანი; თუ ბრაუზერი არ უშვებს (მაგ. iPhone), იმალება დამატებითი პანელები
 function pseudoFs(on, msg) {
   document.body.classList.toggle('pseudo-fs', on);
@@ -573,7 +612,9 @@ $('#glb').addEventListener('click', () => {
   btn.disabled = true;
   toast('GLB ფაილი მზადდება…');
   // სრული მოდელი — დამალული ჯგუფების ჩათვლით; ზომები, ბადე და მონიშვნა არ შედის
+  swapInlayMaterials(true);
   new GLTFExporter().parse(root, (res) => {
+    swapInlayMaterials(false);
     const blob = new Blob([res], { type: 'model/gltf-binary' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -585,6 +626,7 @@ $('#glb').addEventListener('click', () => {
     btn.disabled = false;
     toast(`GLB ჩამოიტვირთა (${(blob.size / 1048576).toFixed(1)} MB)`);
   }, (err) => {
+    swapInlayMaterials(false);
     btn.disabled = false;
     console.error(err);
     toast('GLB ექსპორტი ვერ მოხერხდა');
@@ -638,8 +680,16 @@ function loop(now) {
   const changed = controls.update();
   const moving = tw || changed;
   if (moving) { lastMove = now; aoDirty = true; }
+  // ავტომატური დაბრუნება ცენტრში (ხელის აღებიდან და მოძრაობის დამშვიდებიდან მცირე ხანში)
+  if (autoCenter && !focused && !tween && !dragging && now - lastMove > 450) {
+    const t = controls.target, dx = center.x - t.x, dz = center.z - t.z;
+    if (dx * dx + dz * dz > 1e-4) {
+      const nt = new THREE.Vector3(center.x, t.y, center.z);
+      tweenTo({ pos: nt.clone().add(camera.position.clone().sub(t)), target: nt }, true, 650);
+    }
+  }
   const idle = now - lastMove > 180;
-  if (moving || needsRender || (aoDirty && idle)) {
+  if (composer && (moving || needsRender || (aoDirty && idle))) {
     if (aoPass) aoPass.enabled = idle && !moving;
     composer.render();
     labelRenderer.render(scene, camera);
@@ -652,6 +702,6 @@ requestAnimationFrame(loop);
 
 // შემოწმებისთვის (კონსოლიდან)
 window.__branch = {
-  THREE, scene, root, groups, renderer, get composer() { return composer; }, get camera() { return camera; }, get controls() { return controls; }, setView, setLayer, select, focusOn, pick, zoomBy,
+  THREE, scene, root, groups, renderer, get composer() { return composer; }, get camera() { return camera; }, get controls() { return controls; }, setView, setLayer, select, focusOn, pick, zoomBy, setAutoCenter, get autoCenter() { return autoCenter; },
   capture() { controls.update(); if (aoPass) aoPass.enabled = true; composer.render(); return renderer.domElement.toDataURL("image/png"); },
 };
