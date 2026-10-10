@@ -1,0 +1,20 @@
+{
+  "name": "zoommer-gldani-3d",
+  "version": "1.0.0",
+  "description": "Zoommer Gldani Mall branch — 3D model and viewer",
+  "main": "index.js",
+  "scripts": {
+    "build": "node tools/build.mjs && node tools/export-glb.mjs",
+    "build:html": "node tools/build.mjs",
+    "build:glb": "node tools/export-glb.mjs",
+    "serve": "node tools/serve.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "three": "^0.170.0"
+  }
+}
