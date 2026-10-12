@@ -5,6 +5,7 @@ import {
   H, T, P, COLORS, WALLS, BOXES_INTERIOR, WALL_FINISHES, GLAZING, FACADE, DOORS,
   COLUMNS, FLOOR_OUTLINE, CEILING_OUTLINE, INLAYS, FURNITURE, concreteXAt,
 } from './config.js';
+import { BUILDERS, SHEETS, mergeByMaterial } from './furniture.js';
 
 const DEG = Math.PI / 180;
 const STATUS_TXT = { pdf: 'PDF', measured: 'ნახაზიდან გაზომილი', assumed: 'ვარაუდი' };
@@ -26,12 +27,55 @@ export function mat(key) {
     m.opacity = c.opacity;
     m.depthWrite = false;
   }
+  if (c.e) { m.emissive = new THREE.Color(c.e); m.emissiveIntensity = c.ei ?? 1; }
+  if (c.tex) m.map = texture(c.tex);
+  if (c.alphaTest) { m.alphaTest = c.alphaTest; m.side = THREE.DoubleSide; }
+  if (c.double) m.side = THREE.DoubleSide;
+  if (c.env !== undefined) m.envMapIntensity = c.env;
+  // ორიგინალი ფერის კოდი (RAL/NCS) — ინახება მოდელის მონაცემებში (GLB: material extras)
+  m.userData = { colorCode: c.code || c.name, description: c.name };
   matCache.set(key, m);
   return m;
 }
 
+// ------------------------------------------------------------------ პროცედურული ფაქტურები (DOM-ის გარეშე)
+// mesh — ლითონის ბადე (რომბისებრი, გამჭვირვალე ღიობებით), perf — პერფორირებული ფურცელი,
+// peg — პერფორირებული ფილა (ხვრელები 300 × 200 ბიჯით, ZF-18). ნიმუშის ბიჯს UV განსაზღვრავს.
+const texCache = new Map();
+function texture(kind) {
+  if (texCache.has(kind)) return texCache.get(kind);
+  const N = 64, data = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = (y * N + x) * 4;
+    let v = 255, a = 255;
+    if (kind === 'mesh') {
+      const d1 = Math.abs(((x + y) % 32) - 16), d2 = Math.abs(((x - y + 64) % 32) - 16);
+      a = (d1 > 12 || d2 > 12) ? 255 : 0;
+    } else if (kind === 'perf') {
+      const dx = (x % 16) - 8, dy = (y % 16) - 8;
+      v = dx * dx + dy * dy < 13 ? 70 : 255;
+    } else if (kind === 'peg') {
+      const dx = x - 32, dy = y - 32;
+      v = (Math.abs(dx) < 3 && Math.abs(dy) < 7) ? 60 : 255;
+    }
+    data[i] = data[i + 1] = data[i + 2] = v;
+    data[i + 3] = a;
+  }
+  const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+  t.name = kind;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.colorSpace = THREE.SRGBColorSpace;
+  if (kind === 'peg') t.repeat.set(1 / 0.30, 1 / 0.20);
+  t.needsUpdate = true;
+  texCache.set(kind, t);
+  return t;
+}
+
 // ------------------------------------------------------------------ დამხმარეები
-function mesh(geo, matKey, name, { cast = true, receive = true } = {}) {
+export function mesh(geo, matKey, name, { cast = true, receive = true } = {}) {
   const m = new THREE.Mesh(geo, mat(matKey));
   m.name = name;
   m.castShadow = cast && !COLORS[matKey].opacity;
@@ -48,7 +92,7 @@ function aabb(name, x, y, z, matKey, opts) {
 }
 
 // ლოკალური ყუთი: ცენტრი (cx, cy, cz), ზომები (sx, sy, sz)
-function lbox(name, sx, sy, sz, cx, cy, cz, matKey, opts) {
+export function lbox(name, sx, sy, sz, cx, cy, cz, matKey, opts) {
   const m = mesh(new THREE.BoxGeometry(sx, sy, sz), matKey, name, opts);
   m.position.set(cx, cy, cz);
   return m;
@@ -84,14 +128,14 @@ function shapeFromPath(path) {
 }
 
 // ბრტყელი ფიგურის ამოწევა: y0-დან height-მდე (გეგმის კოორდინატებში)
-function flatExtrude(shape, y0, height, curveSegments = 48) {
+export function flatExtrude(shape, y0, height, curveSegments = 48) {
   const g = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false, curveSegments });
   g.rotateX(-Math.PI / 2); // shape (x, y, extrude z) → world (x, z_extrude, −y)
   g.translate(0, y0, 0);
   return g;
 }
 
-function roundedRect(w, d, r) {
+export function roundedRect(w, d, r) {
   const s = new THREE.Shape();
   const x = -w / 2, y = -d / 2;
   r = Math.min(r, w / 2, d / 2);
@@ -210,321 +254,25 @@ function buildDoor(d) {
   });
 }
 
-// ------------------------------------------------------------------ ავეჯი
-// ავეჯის ფორმები — ზომები „ZGMF - ავეჯი - Update 2.pdf“-ის მიხედვით (ფურცლები ZGMF-01…26).
-const F = {
-  // ZF-01-1 / 01-7: 1000×350×2050, კორპუსი 1800 ცოკოლზე 250 (700×200).
-  // ZF-01-6 / 01-5A / 01-B: კორპუსი 1800 ჰაერში, 250 მმ იატაკიდან, Ø100 მილზე (იატაკიდან ჭერამდე),
-  // მილის ზონა უკან 100 მმ.
-  unit(o, g) {
-    const { w, d, h } = o;
-    const main = o.color || 'furnOrange';
-    const y0 = 0.25;                        // კორპუსის ქვედა ნიშნული
-    const zb = o.pipe ? -d / 2 + 0.10 : -d / 2; // კორპუსის უკანა წახნაგი
-    const bd = d / 2 - zb;                  // კორპუსის სიღრმე
-    const zc = (zb + d / 2) / 2;
-    const lc = o.lower ?? 0.51;              // ქვედა (დახურული) სათავსის სიმაღლე
-    const t = 0.036;
-    if (o.pipe) {
-      g.add(cyl('ავეჯის მილი Ø100 (იატაკიდან ჭერამდე)', 0.05, H.ceiling, 0, 0, -d / 2 + 0.05, main, 20));
-    } else {
-      g.add(lbox('ცოკოლი 700×200', 0.70, y0, 0.20, 0, y0 / 2, zb + 0.10, main));
-    }
-    g.add(lbox('ქვედა სათავსი', w, lc, bd, 0, y0 + lc / 2, zc, main));
-    const uy0 = y0 + lc, uh = h - uy0;
-    g.add(lbox('უკანა პანელი', w - 2 * t, uh - t, 0.018, 0, uy0 + (uh - t) / 2, zb + 0.009, 'furnWhite'));
-    g.add(lbox('გვერდი 1', t, uh, bd, -w / 2 + t / 2, uy0 + uh / 2, zc, main));
-    g.add(lbox('გვერდი 2', t, uh, bd, w / 2 - t / 2, uy0 + uh / 2, zc, main));
-    g.add(lbox('სახურავი', w, t, bd, 0, h - t / 2, zc, main));
-    const n = o.shelves ?? 3;
-    for (let i = 1; i <= n; i++) {
-      const y = uy0 + (uh - t) * i / (n + 1);
-      g.add(lbox(`თარო ${i}`, w - 2 * t, 0.018, bd - 0.05, 0, y, zc - 0.02, 'furnWhite'));
-    }
-    const glass = lbox('მინის კარი', w - 2 * t, uh - t, 0.008, 0, uy0 + (uh - t) / 2, d / 2 - 0.01, 'furnGlass');
-    glass.userData.noPick = true;
-    g.add(glass);
-  },
-  // ZF-16-1 (2000) / ZF-16-2 (3000): 350 სიღრმე, 2050 სიმაღლე; ცოკოლი 250 (გვერდებიდან 150 შეწეული),
-  // სათავსი 275, ზემოთ პერფორირებული პანელი 1525 (სიღრმე 140) კაკვებით.
-  peg(o, g) {
-    const { w, d, h } = o;
-    const zb = -d / 2;
-    g.add(lbox('ცოკოლი', w - 0.30, 0.25, 0.20, 0, 0.125, zb + 0.10, 'furnOrange'));
-    g.add(lbox('სათავსი', w, 0.275, d, 0, 0.25 + 0.1375, 0, 'furnOrange'));
-    const py0 = 0.525, ph = h - py0, pd = 0.14, t = 0.036;
-    g.add(lbox('პერფორირებული პანელი', w - 2 * t, ph - 2 * t, 0.02, 0, py0 + ph / 2, zb + 0.10, 'furnGray'));
-    g.add(lbox('ჩარჩო — გვერდი 1', t, ph, pd, -w / 2 + t / 2, py0 + ph / 2, zb + pd / 2, 'furnOrange'));
-    g.add(lbox('ჩარჩო — გვერდი 2', t, ph, pd, w / 2 - t / 2, py0 + ph / 2, zb + pd / 2, 'furnOrange'));
-    g.add(lbox('ჩარჩო — ზედა', w, t, pd, 0, h - t / 2, zb + pd / 2, 'furnOrange'));
-    const n = Math.max(2, Math.round(w / 0.5));
-    for (let r = 0; r < 4; r++) {
-      const y = py0 + 0.20 + r * 0.363;
-      g.add(lbox(`კაკვების რიგი ${r + 1}`, w - 0.15, 0.015, 0.012, 0, y, zb + 0.12, 'frame'));
-      for (let i = 0; i < n; i++) {
-        const k = lbox(`კაკვი ${r + 1}.${i + 1}`, 0.008, 0.008, 0.21, -w / 2 + (i + 0.5) * w / n, y, zb + 0.225, 'frame');
-        k.castShadow = false;
-        g.add(k);
-      }
-    }
-  },
-  // ZF-03-1 / 03-2 (2000×1000) და ZF-03-3 (2500×1000): სიმაღლე 900 — ზედა კორპუსი 400
-  // (თეთრი ზედაპირი), ფეხები 500 (ოვალური 150×650 MDF, ძირითადად 2, ZF-03-3-ზე 3).
-  table(o, g) {
-    const { w, d, h } = o;
-    const r = 0.15, legH = 0.50, boxH = h - legH;
-    g.add(mesh(flatExtrude(roundedRect(w, d, r), h - 0.018, 0.018, 8), 'furnWhite', 'ზედაპირი (თეთრი)'));
-    g.add(mesh(flatExtrude(roundedRect(w, d, r), legH, boxH - 0.018, 8), 'furnOrange', 'კორპუსი / სათავსები'));
-    const along = w >= d ? 'x' : 'z', L = Math.max(w, d);
-    const nLegs = L > 2.2 ? 3 : 2;
-    for (let i = 0; i < nLegs; i++) {
-      const p = -L / 2 + L * (i + 0.5) / nLegs;
-      const leg = mesh(flatExtrude(roundedRect(along === 'x' ? 0.15 : 0.65, along === 'x' ? 0.65 : 0.15, 0.075), 0, legH, 12), 'furnOrange', `ფეხი ${i + 1}`);
-      leg.position[along] = p;
-      g.add(leg);
-    }
-  },
-  // ZF-08: გარე R1950, შიდა R1500, სიმაღლე 1100; შიდა სამუშაო მაგიდა R1200–R1500.
-  ring(o, g) {
-    const sector = (r0, r1) => {
-      const s = new THREE.Shape();
-      const a0 = o.a0 * DEG, a1 = o.a1 * DEG;
-      s.absarc(0, 0, r1, -a0, -a1, true);
-      s.absarc(0, 0, r0, -a1, -a0, false);
-      s.closePath();
-      return s;
-    };
-    g.add(mesh(flatExtrude(sector(o.rIn, o.rOut - 0.02), 0, 0.07, 96), 'furnDark', 'ცოკოლი'));
-    g.add(mesh(flatExtrude(sector(o.rIn, o.rOut), 0.07, o.h - 0.07 - 0.03, 96), 'furnOrange', 'გარე დახლი'));
-    g.add(mesh(flatExtrude(sector(o.rIn - 0.02, o.rOut + 0.02), o.h - 0.03, 0.03, 96), 'furnOrange', 'დახლის ზედაპირი'));
-    g.add(mesh(flatExtrude(sector(o.rInner, o.rIn), o.hInner - 0.03, 0.03, 96), 'furnWhite', 'შიდა სამუშაო მაგიდა'));
-    g.add(mesh(flatExtrude(sector(o.rIn - 0.03, o.rIn), 0, o.hInner - 0.03, 96), 'furnWhite', 'სამუშაო მაგიდის ფარი'));
-  },
-  // ZF-09-2 / ZF-14-3: ცილინდრი Ø700 × 1000.
-  pedestal(o, g) {
-    const r = o.w / 2;
-    g.add(cyl('კორპუსი', r, o.h - 0.036, 0, 0, 0, o.color || 'furnWhite', 40));
-    g.add(cyl('ზედაპირი', r, 0.036, 0, o.h - 0.036, 0, 'furnGray', 40));
-  },
-  // ZF-07: ცილინდრი (Ø1000×300 ან Ø800×500).
-  pouf(o, g) {
-    g.add(cyl('კუნძული', o.w / 2, o.h, 0, 0, 0, 'pouf', 48));
-  },
-  // ZF-09-1: ჩეკ-დესკი სვეტთან — 1000 × 900 × 1000; ნახევარწრიული წინა მხარე R500.
-  checkDesk(o, g) {
-    const R = 0.45, back = 0.36;
-    const dShape = (rr, bb) => {
-      const s = new THREE.Shape();
-      s.moveTo(-rr, bb); s.lineTo(-rr, 0);
-      s.absarc(0, 0, rr, Math.PI, 0, false); // რკალი წინ (shape −y = გეგმის +z)
-      s.lineTo(rr, bb); s.closePath();
-      return s;
-    };
-    // shape-ის +y = გეგმის −z (უკანა მხარე სვეტისკენ), რკალი — წინ (+z)
-    g.add(mesh(flatExtrude(dShape(R - 0.05, back), 0, 0.07, 48), 'furnGray', 'ცოკოლი'));
-    g.add(mesh(flatExtrude(dShape(R, back), 0.07, 0.894, 48), 'furnWhite', 'კორპუსი'));
-    g.add(mesh(flatExtrude(dShape(0.50, back + 0.03), 0.964, 0.036, 48), 'furnWhite', 'ზედაპირი R500'));
-  },
-  // ZF-10-2: 1618 × 1090 × 900 — ფეხები 540, ფილა 100, მინის ვიტრინა 260.
-  audio(o, g) {
-    const { w, d, h } = o;
-    // ფეხები: გრძელი მხარის (d = 1618) გასწვრივ 150-იანი და 654-იანი, მოკლე მხარეს 750
-    g.add(lbox('ფეხი 1', 0.75, 0.54, 0.15, 0, 0.27, -d / 2 + 0.357 + 0.075, 'furnOrange'));
-    g.add(lbox('ფეხი 2', 0.75, 0.54, 0.654, 0, 0.27, d / 2 - 0.607 - 0.327, 'furnOrange'));
-    g.add(lbox('ფილა / უჯრა', w, 0.10, d, 0, 0.59, 0, 'furnOrange'));
-    const gy = 0.64, gh = h - gy;
-    for (let i = 0; i < 2; i++) for (let j = 0; j < 3; j++) {
-      const c = lbox(`სექცია ${i + 1}.${j + 1}`, w / 2 - 0.03, gh - 0.02, d / 3 - 0.03, (i - 0.5) * w / 2, gy + (gh - 0.02) / 2, (j - 1) * d / 3, (i + j) % 2 ? 'furnWhite' : 'furnOrange');
-      c.castShadow = false;
-      g.add(c);
-    }
-    const top = lbox('მინის ყუთი', w, gh, d, 0, gy + gh / 2, 0, 'furnGlass');
-    top.userData.noPick = true;
-    g.add(top);
-  },
-  // ZF-04: 2000 × 400 × 1500 — ცოკოლი 70, სათავსი 230, ორმხრივი პერფორირებული პანელი 1200 (1960 სიგანე).
-  gondola(o, g) {
-    const { w, d, h } = o;
-    g.add(lbox('ცოკოლი', w - 0.10, 0.07, d - 0.10, 0, 0.035, 0, 'furnOrange'));
-    g.add(lbox('სათავსი', w, 0.23, d, 0, 0.07 + 0.115, 0, 'furnOrange'));
-    const py0 = 0.30, ph = h - py0, t = 0.02;
-    g.add(lbox('პერფორირებული პანელი', 1.96 - 2 * t, ph - 2 * t, 0.12, 0, py0 + ph / 2, 0, 'furnGray'));
-    g.add(lbox('ჩარჩო — გვერდი 1', t, ph, 0.14, -0.98 + t / 2, py0 + ph / 2, 0, 'furnOrange'));
-    g.add(lbox('ჩარჩო — გვერდი 2', t, ph, 0.14, 0.98 - t / 2, py0 + ph / 2, 0, 'furnOrange'));
-    g.add(lbox('ჩარჩო — ზედა', 1.96, t, 0.14, 0, h - t / 2, 0, 'furnOrange'));
-    for (let r = 0; r < 3; r++) for (const sd of [-1, 1]) {
-      const k = lbox(`კაკვების რიგი ${r + 1}`, 1.76, 0.012, 0.13, 0, py0 + 0.25 + r * 0.38, sd * 0.13, 'frame');
-      k.castShadow = false;
-      g.add(k);
-    }
-  },
-  // ZF-02 („სათავსი O“): 1960 × 350 × 2050, შუაში ღიობი 1000 × 1210 (იატაკიდან 420-ზე).
-  oFrame(o, g) {
-    const { w, d, h } = o;
-    const s = new THREE.Shape();
-    const R = 0.42, hw = w / 2;
-    s.moveTo(-hw + R, 0); s.lineTo(hw - R, 0); s.quadraticCurveTo(hw, 0, hw, R);
-    s.lineTo(hw, h - R); s.quadraticCurveTo(hw, h, hw - R, h);
-    s.lineTo(-hw + R, h); s.quadraticCurveTo(-hw, h, -hw, h - R);
-    s.lineTo(-hw, R); s.quadraticCurveTo(-hw, 0, -hw + R, 0);
-    const hole = new THREE.Path();
-    const ow = 1.0, oy0 = 0.42, oy1 = 0.42 + 1.21, r2 = 0.10;
-    hole.moveTo(-ow / 2 + r2, oy0); hole.lineTo(ow / 2 - r2, oy0); hole.quadraticCurveTo(ow / 2, oy0, ow / 2, oy0 + r2);
-    hole.lineTo(ow / 2, oy1 - r2); hole.quadraticCurveTo(ow / 2, oy1, ow / 2 - r2, oy1);
-    hole.lineTo(-ow / 2 + r2, oy1); hole.quadraticCurveTo(-ow / 2, oy1, -ow / 2, oy1 - r2);
-    hole.lineTo(-ow / 2, oy0 + r2); hole.quadraticCurveTo(-ow / 2, oy0, -ow / 2 + r2, oy0);
-    s.holes.push(hole);
-    const geo = new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: false, curveSegments: 12 });
-    geo.translate(0, 0, -d / 2);
-    g.add(mesh(geo, 'furnOrange', 'კორპუსი (O-ფორმა)'));
-    [0.42 + 0.403, 0.42 + 0.806].forEach((y, i) => {
-      const sh = lbox(`მინის თარო ${i + 1}`, ow, 0.008, d - 0.02, 0, y, 0, 'furnGlass');
-      sh.userData.noPick = true;
-      g.add(sh);
-    });
-  },
-  // ZF-15-3: PlayStation ტოტემი — 550 × 500 × 2490 (ბაზა Ø550×70, საყრდენი 140×130×300,
-  // კვადრატი 550, X 550, O 470, სამკუთხედი 550).
-  totem(o, g) {
-    const W = o.w, D = o.d;
-    g.add(cyl('ბაზა Ø550', 0.275, 0.07, 0, 0, 0, 'furnGray', 40));
-    g.add(lbox('საყრდენი', 0.14, 0.30, 0.13, 0, 0.07 + 0.15, 0, 'furnGray'));
-    let y = 0.37;
-    // კვადრატი (ჩარჩო)
-    const fr = 0.128;
-    g.add(lbox('□ ზედა', W, fr, D, 0, y + 0.55 - fr / 2, 0, 'furnWhite'));
-    g.add(lbox('□ ქვედა', W, fr, D, 0, y + fr / 2, 0, 'furnWhite'));
-    g.add(lbox('□ მარცხენა', fr, 0.55, D, -W / 2 + fr / 2, y + 0.275, 0, 'furnWhite'));
-    g.add(lbox('□ მარჯვენა', fr, 0.55, D, W / 2 - fr / 2, y + 0.275, 0, 'furnWhite'));
-    y += 0.55;
-    // X
-    [45, -45].forEach((a, i) => {
-      const bar = lbox(`✕ ზოლი ${i + 1}`, 0.70, fr, D, 0, y + 0.275, 0, 'furnGray');
-      bar.rotation.z = a * DEG;
-      g.add(bar);
-    });
-    y += 0.55;
-    // O (რგოლი, ღერძი სიღრმის მიმართულებით)
-    const ring = new THREE.Shape(); ring.absarc(0, 0, 0.275, 0, Math.PI * 2, false);
-    const rh = new THREE.Path(); rh.absarc(0, 0, 0.275 - fr, 0, Math.PI * 2, true); ring.holes.push(rh);
-    const rg = new THREE.ExtrudeGeometry(ring, { depth: D, bevelEnabled: false, curveSegments: 32 });
-    rg.translate(0, y + 0.235, -D / 2);
-    g.add(mesh(rg, 'furnWhite', '○ რგოლი'));
-    y += 0.47;
-    // სამკუთხედი
-    const tri = new THREE.Shape(); tri.moveTo(-W / 2, 0); tri.lineTo(W / 2, 0); tri.lineTo(0, 0.55); tri.closePath();
-    const th = new THREE.Path(); th.moveTo(-0.07, 0.15); th.lineTo(0, 0.28); th.lineTo(0.07, 0.15); th.closePath(); tri.holes.push(th);
-    const tg = new THREE.ExtrudeGeometry(tri, { depth: D, bevelEnabled: false });
-    tg.translate(0, y, -D / 2);
-    g.add(mesh(tg, 'furnGray', '△ სამკუთხედი'));
-  },
-  // ZF-15-2: პალმა — 2780 სიმაღლე; ბაზა Ø700×70, ღერო 1960 (300 → 175), ვარჯი 1350 × 300 × 750.
-  palm(o, g) {
-    g.add(cyl('ბაზა Ø700', 0.35, 0.07, 0, 0, 0, 'furnWhite', 40));
-    const trunk = mesh(new THREE.CylinderGeometry(0.175 / Math.SQRT2, 0.30 / Math.SQRT2, 1.96, 4), 'furnWhite', 'ღერო');
-    trunk.rotation.y = Math.PI / 4;
-    trunk.position.set(0, 0.07 + 0.98, 0);
-    g.add(trunk);
-    const top = 0.07 + 1.96;
-    [[1, 0.62, 0.30], [-1, 0.62, 0.30], [1, 0.36, -0.10], [-1, 0.36, -0.10]].forEach(([sd, yo, tilt], i) => {
-      const leaf = lbox(`ფოთოლი ${i + 1}`, 0.30, 0.03, 0.675, 0, 0, sd * 0.3375, 'furnWhite');
-      const pivot = new THREE.Group();
-      pivot.name = `ფოთლის საყრდენი ${i + 1}`;
-      pivot.position.set(0, top + yo, 0);
-      pivot.rotation.x = sd * tilt;
-      pivot.add(leaf);
-      g.add(pivot);
-    });
-  },
-  // ZF-18: სმარტ კედელი — 2150 + 2×120 დგარი = 2390; სახლის ფორმა: კარნიზი 1750, ქედი 2590;
-  // თაროები 350 სიღრმის (N1 3×715, N2 3×550), სათავსი N3 1120, ბაზა N4 1630×350×100.
-  smartHome(o, g) {
-    const { w, d, h } = o;
-    const t = 0.12, back = -d / 2;
-    const s = new THREE.Shape();
-    s.moveTo(-w / 2, 0); s.lineTo(w / 2, 0); s.lineTo(w / 2, o.eave); s.lineTo(0, h); s.lineTo(-w / 2, o.eave); s.closePath();
-    const panel = mesh(new THREE.ExtrudeGeometry(s, { depth: 0.036, bevelEnabled: false }), 'ral1016', 'პერფორირებული ზურგი');
-    panel.position.z = back;
-    g.add(panel);
-    g.add(lbox('დგარი 1 (120)', t, o.eave, d, -w / 2 + t / 2, o.eave / 2, 0, 'ral1016'));
-    g.add(lbox('დგარი 2 (120)', t, o.eave, d, w / 2 - t / 2, o.eave / 2, 0, 'ral1016'));
-    const slope = Math.hypot(w / 2, h - o.eave), ang = Math.atan2(h - o.eave, w / 2);
-    [-1, 1].forEach((sd, i) => {
-      const r = lbox(`სახურავის ზოლი ${i + 1}`, slope, t, d, sd * w / 4, (o.eave + h) / 2, 0, 'ral1016');
-      r.rotation.z = -sd * ang;
-      g.add(r);
-    });
-    const iw = w - 2 * t;
-    g.add(lbox('ბაზა N4 (1630×350×100)', 1.63, 0.10, 0.35, 0, 0.05, back + 0.036 + 0.175, 'ral1016'));
-    g.add(lbox('სათავსი N3 (1120)', 1.12, 0.22, 0.35, 0.30, 0.55, back + 0.036 + 0.175, 'ral1016'));
-    g.add(lbox('თარო N2 (3×550)', 1.65, 0.036, 0.35, 0, 1.05, back + 0.036 + 0.175, 'ral1016'));
-    g.add(lbox('თარო N1 (3×715)', Math.min(iw, 2.145), 0.036, 0.35, 0, 1.45, back + 0.036 + 0.175, 'ral1016'));
-  },
-  // ZF-12: პედესტალი დაისონის მტვერსასრუტებისთვის — R500, სიმაღლე 100, სვეტის ყუთის გარშემო (¾ წრე).
-  pedestal34(o, g) {
-    const s = new THREE.Shape();
-    s.moveTo(0, 0);
-    s.absarc(0, 0, o.r, Math.PI / 2, Math.PI * 2, false); // shape-ის I მეოთხედი (გეგმაზე +x, −z) — ყუთის ადგილი
-    s.closePath();
-    g.add(mesh(flatExtrude(s, 0, o.h, 48), 'ral1016', 'პედესტალი R500'));
-  },
-  // ZF-06: TV კედელი — 3800 × 3380, სიღრმე 375; ნიშა 3700, თაროები 350 სიღრმის;
-  // ტელევიზორები ნახაზის მიხედვით: 40", 55", 55" / 50", 55", 55" / 65", 75".
-  tvWall(o, g) {
-    const { w, d, h } = o;
-    const zb = -d / 2, t = 0.15;
-    g.add(lbox('ზურგი RAL 7015', w, h, 0.025, 0, h / 2, zb + 0.0125, 'ral7015'));
-    g.add(lbox('ჩარჩო — მარცხენა', t, h, d, -w / 2 + t / 2, h / 2, 0, 'ral7015'));
-    g.add(lbox('ჩარჩო — მარჯვენა', t, h, d, w / 2 - t / 2, h / 2, 0, 'ral7015'));
-    g.add(lbox('ჩარჩო — ზედა', w, 0.25, d, 0, h - 0.125, 0, 'ral7015'));
-    g.add(lbox('ჩარჩო — ქვედა', w, 0.25, d, 0, 0.125, 0, 'ral7015'));
-    [1.352, 2.211].forEach((y, i) => g.add(lbox(`თარო ${i + 1} (350)`, w - 2 * t, 0.018, 0.35, 0, y, zb + 0.025 + 0.175, 'ral7015')));
-    const tv = (inch) => [inch * 0.8716 * 0.0254, inch * 0.4903 * 0.0254];
-    const L = -w / 2 + 0.05; // ნიშის მარცხენა კიდე
-    [[40, 0.70, 2.68], [55, 1.85, 2.68], [55, 3.04, 2.68], [50, 0.70, 1.79], [55, 1.85, 1.79], [55, 3.00, 1.79], [65, 1.05, 0.80], [75, 2.71, 0.80]]
-      .forEach(([inch, x, y], i) => {
-        const [tw, th] = tv(inch);
-        g.add(lbox(`ტელევიზორი ${i + 1} — ${inch}"`, tw, th, 0.05, L + x, y, zb + 0.06, 'furnDark'));
-      });
-  },
-  // ZF-05-2: ბანკის მაგიდა — 700 (მომხმარებლის მხარე) × 800 × 750; თეთრი MDF.
-  bankDesk(o, g) {
-    const { w, d, h } = o; // w — გეგმაზე X (800), d — Z (700)
-    const t = 0.036;
-    g.add(lbox('ზედაპირი', w, t, d, 0, h - t / 2, 0, 'furnWhite'));
-    g.add(lbox('გვერდი 1', w, h - t, t, 0, (h - t) / 2, -d / 2 + t / 2, 'furnWhite'));
-    g.add(lbox('გვერდი 2', w, h - t, t, 0, (h - t) / 2, d / 2 - t / 2, 'furnWhite'));
-    g.add(lbox('მომხმარებლის მხარის პანელი', t, h - t, d - 2 * t, -w / 2 + t / 2, (h - t) / 2, 0, 'furnWhite'));
-    g.add(lbox('თარო პრინტერისთვის', 0.40, 0.018, d - 2 * t, w / 2 - 0.30, 0.22, 0, 'furnWhite'));
-    g.add(lbox('უჯრა', 0.40, 0.184, d - 2 * t, w / 2 - 0.30, 0.11, 0, 'furnWhite'));
-    const chair = (x, back, tag) => {
-      g.add(lbox(`${tag} — სავარძელი`, 0.46, 0.06, 0.46, x, 0.46, 0, 'seat'));
-      g.add(lbox(`${tag} — საზურგე`, 0.04, 0.42, 0.44, x + back * 0.21, 0.72, 0, 'seat'));
-      g.add(cyl(`${tag} — საყრდენი`, 0.03, 0.43, x, 0, 0, 'frame', 12));
-    };
-    chair(-w / 2 - 0.27, -1, 'კლიენტის სკამი');
-    chair(w / 2 + 0.29, 1, 'ბანკის თანამშრომლის სკამი');
-  },
-};
-
+// ------------------------------------------------------------------ ავეჯი (furniture.js — ZGMF ავეჯის კრებულის მიხედვით)
 function buildFurniture(o, i) {
   const g = new THREE.Group();
   const label = o.n > 1 ? `${o.name} #${o.idx}` : o.name;
   g.name = `${o.code} ${label}`.trim();
-  F[o.type](o, g);
-  g.children.forEach((c) => { if (!c.name.startsWith(o.code)) c.name = `${o.code} / ${c.name}`; });
+  const build = BUILDERS[o.type];
+  if (!build) throw new Error('უცნობი ავეჯის ტიპი: ' + o.type);
+  build(o, g);
+  mergeByMaterial(g, o.code);
   g.position.set(o.x, 0, o.z);
   g.rotation.y = (o.rot || 0) * DEG;
   const st = o.st || {};
-  const size = o.type === 'ring'
-    ? { 'გარე დიამეტრი': fmt(o.rOut * 2), 'დახლის სიგანე': fmt(o.rOut - o.rIn), 'სიმაღლე': fmt(o.h) }
-    : o.type === 'pedestal34' ? { 'რადიუსი': fmt(o.r), 'სიმაღლე': fmt(o.h) }
-    : { 'სიგანე': fmt(o.w), 'სიღრმე': fmt(o.d), 'სიმაღლე': fmt(o.h) };
-  const status = o.type === 'ring'
-    ? { 'გარე დიამეტრი': st.w, 'დახლის სიგანე': st.d, 'სიმაღლე': st.h, 'მდებარეობა': st.pos }
-    : o.type === 'pedestal34' ? { 'რადიუსი': st.w, 'სიმაღლე': st.h, 'მდებარეობა': st.pos }
-    : { 'სიგანე': st.w, 'სიღრმე': st.d, 'სიმაღლე': st.h, 'მდებარეობა': st.pos };
-  info(g, { name: label, code: o.code, kind: 'ავეჯი', zone: o.zone, size, status, id: `F-${i + 1}` });
+  const src = SHEETS[o.type]?.(o) || {};
+  const sheet = o.sheet || src.sheet, page = o.page || src.page;
+  const size = o.size || { 'სიგანე': fmt(o.w), 'სიღრმე': fmt(o.d), 'სიმაღლე': fmt(o.h) };
+  const status = o.sizeSt || { 'სიგანე': st.w, 'სიღრმე': st.d, 'სიმაღლე': st.h, 'მდებარეობა': st.pos };
+  if (!o.sizeSt && st.pos) status['მდებარეობა'] = st.pos;
+  const notes = [sheet ? `წყარო: ${sheet} (ავეჯის PDF, გვ. ${page})` : null, o.note].filter(Boolean).join('. ');
+  info(g, { name: label, code: o.code, kind: 'ავეჯი', zone: o.zone, size, status, id: `F-${i + 1}`, note: notes || undefined, sheet, page });
   return g;
 }
 

@@ -8,6 +8,19 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { buildModel } from '../src/model.js';
 
+// ფაქტურების (ბადე, პერფორაცია) PNG-ად ჩასაწერად Node-ში საჭიროა canvas
+import { createCanvas, ImageData as NapiImageData } from '@napi-rs/canvas';
+globalThis.ImageData ??= NapiImageData;
+globalThis.OffscreenCanvas ??= class {
+  constructor(w, h) { this._c = createCanvas(w, h); }
+  get width() { return this._c.width; }
+  set width(v) { this._c.width = v; }
+  get height() { return this._c.height; }
+  set height(v) { this._c.height = v; }
+  getContext(type, opts) { return this._c.getContext(type, opts); }
+  async convertToBlob({ type = 'image/png' } = {}) { return new Blob([await this._c.encode(type === 'image/jpeg' ? 'jpeg' : 'png')], { type }); }
+};
+
 // GLTFExporter იყენებს FileReader-ს — Node-ში არ არსებობს
 globalThis.FileReader ??= class {
   readAsArrayBuffer(blob) { blob.arrayBuffer().then((b) => { this.result = b; this.onloadend?.(); }); }
@@ -30,7 +43,30 @@ console.log(`GLB ჩაწერილია: ${out} (${(glb.byteLength / 1024).
 
 // ---- შემოწმება: ფაილის ხელახლა წაკითხვა ----
 const buf = fs.readFileSync(out);
-const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+// Node-ში სურათების დეკოდირება შეუძლებელია — შემოწმებისთვის ფაქტურების მითითებები დროებით ამოიღება
+// (გეომეტრია, მასალები და ზომები უცვლელია; თავად ფაილი ხელუხლებელია).
+function stripImages(b) {
+  const jsonLen = b.readUInt32LE(12);
+  const json = JSON.parse(b.subarray(20, 20 + jsonLen).toString('utf8'));
+  const imgCount = (json.images || []).length;
+  delete json.images; delete json.textures; delete json.samplers;
+  for (const m of json.materials || []) {
+    if (m.pbrMetallicRoughness) delete m.pbrMetallicRoughness.baseColorTexture;
+    delete m.normalTexture; delete m.emissiveTexture; delete m.occlusionTexture;
+  }
+  json.extensionsUsed = (json.extensionsUsed || []).filter((e) => e !== 'KHR_texture_transform');
+  let js = Buffer.from(JSON.stringify(json), 'utf8');
+  const pad = (4 - (js.length % 4)) % 4;
+  js = Buffer.concat([js, Buffer.alloc(pad, 0x20)]);
+  const rest = b.subarray(20 + jsonLen);
+  const head = Buffer.alloc(20);
+  head.writeUInt32LE(0x46546c67, 0); head.writeUInt32LE(2, 4); head.writeUInt32LE(20 + js.length + rest.length, 8);
+  head.writeUInt32LE(js.length, 12); head.writeUInt32LE(0x4e4f534a, 16);
+  return { glb: Buffer.concat([head, js, rest]), imgCount };
+}
+const { glb: stripped, imgCount } = stripImages(buf);
+console.log('ჩაშენებული ფაქტურები (PNG):', imgCount);
+const ab = stripped.buffer.slice(stripped.byteOffset, stripped.byteOffset + stripped.byteLength);
 const gltf = await new GLTFLoader().parseAsync(ab, '');
 const scene = gltf.scene;
 scene.updateMatrixWorld(true);
@@ -58,7 +94,7 @@ const find = (prefix) => { let r = null; scene.traverse((o) => { if (!r && o.nam
 const checks = [
   ['W-bottom', 'ქვედა კედელი (18.16 + 0.10 + 2.16 + ...)'],
   ['G-A1', 'ვიტრაჟი A 3.70'], ['G-B2', 'ვიტრაჟი B 7.38'], ['P-banks', 'ბანკების კედელი 3.47'],
-  ['ZF-08', 'სალარო Ø3.88'], ['C-1', 'სვეტი C-1 1.00×0.69'],
+  ['ZF-08', 'სალარო Ø3.90'], ['C-1', 'სვეტი C-1 1.00×0.69'], ['ZF-01-1', 'ვიტრინა 1000×350×2050'], ['ZF-03-1', 'მაგიდა 2000×1000×900'],
 ];
 for (const [p, label] of checks) {
   const o = find(p);

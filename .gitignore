@@ -5,3 +5,6 @@ verification/plan-vs-model_*.png
 
 .vercel
 .env*
+
+# ავეჯის PDF-ის ნახაზის ფრაგმენტები — მხოლოდ ლოკალურად
+verification/pdf-vs-model_*.png
