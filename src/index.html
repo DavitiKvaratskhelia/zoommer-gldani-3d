@@ -80,6 +80,28 @@ button{font:inherit;color:inherit}
 #legend .sw.approx{border-top:2px dashed #ff8a4c}
 #toast{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);background:rgba(20,22,26,.92);border:1px solid var(--line);color:#fff;border-radius:10px;padding:9px 14px;font-size:13px;box-shadow:var(--shadow);z-index:5}
 [hidden]{display:none !important}
+
+/* ნახაზის მნახველი */
+#dwg{position:fixed;inset:0;z-index:20;background:rgba(14,15,18,.96);display:flex;flex-direction:column;color:var(--text)}
+.dwg-bar{display:flex;align-items:center;gap:12px;padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 8px max(14px,env(safe-area-inset-left))}
+.dwg-title{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.dwg-title b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dwg-title span{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dwg-tools{display:flex;gap:6px;flex:none}
+.dwg-btn{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--btn);color:var(--text);font-size:20px;line-height:1;cursor:pointer;text-decoration:none}
+.dwg-btn:hover{background:var(--btn-hover)}
+.dwg-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.dwg-close{font-size:24px}
+.dwg-tabs{display:flex;gap:6px;padding:0 max(12px,env(safe-area-inset-right)) 8px max(14px,env(safe-area-inset-left));overflow-x:auto;scrollbar-width:none}
+.dwg-tabs::-webkit-scrollbar{display:none}
+.dwg-tabs button{flex:none;border:1px solid var(--line);background:var(--btn);color:var(--muted);border-radius:99px;padding:6px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.dwg-tabs button.active{border-color:var(--accent);color:#fff;background:var(--accent-soft)}
+.dwg-stage{position:relative;flex:1;overflow:hidden;background:#2a2c31;touch-action:none;cursor:grab}
+.dwg-stage:active{cursor:grabbing}
+#dwg-img{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none;image-rendering:auto;box-shadow:0 6px 30px rgba(0,0,0,.5);background:#fff}
+.dwg-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;font-size:14px;color:var(--muted);pointer-events:none}
+.dwg-hint{padding:7px 14px max(8px,env(safe-area-inset-bottom));font-size:12px;color:var(--muted);text-align:center}
+#info .actions{flex-wrap:wrap}
 .btn .ts{display:none}
 
 /* ზომების წარწერები */
@@ -160,8 +182,24 @@ body.pseudo-fs .brand,body.pseudo-fs #hint{display:none}
 <section id="info" hidden aria-live="polite">
   <button class="icon-btn" id="info-close" aria-label="დახურვა">×</button>
   <div id="info-body"></div>
-  <div class="actions"><button class="btn" id="info-focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>ობიექტზე ფოკუსი</button></div>
+  <div class="actions"><button class="btn" id="info-focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>ობიექტზე ფოკუსი</button><button class="btn" id="info-drawing" hidden title="ობიექტის ნახაზი PDF-დან"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg>ნახაზი PDF-დან</button></div>
 </section>
+
+<div id="dwg" hidden role="dialog" aria-modal="true" aria-label="ნახაზი PDF-დან">
+  <div class="dwg-bar">
+    <div class="dwg-title"><b id="dwg-title"></b><span id="dwg-sub"></span></div>
+    <div class="dwg-tools">
+      <button class="dwg-btn" id="dwg-out" title="დაშორება" aria-label="დაშორება">−</button>
+      <button class="dwg-btn" id="dwg-fit" title="მთლიანი ფურცელი" aria-label="მთლიანი ფურცელი"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      <button class="dwg-btn" id="dwg-in" title="მიახლოება" aria-label="მიახლოება">+</button>
+      <a class="dwg-btn" id="dwg-open" target="_blank" rel="noopener" title="სურათის გახსნა ახალ ჩანართში" aria-label="ახალ ჩანართში"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></svg></a>
+      <button class="dwg-btn dwg-close" id="dwg-close" title="დახურვა (Esc)" aria-label="დახურვა">×</button>
+    </div>
+  </div>
+  <div class="dwg-tabs" id="dwg-tabs"></div>
+  <div class="dwg-stage" id="dwg-stage"><img id="dwg-img" alt="" draggable="false"><div class="dwg-msg" id="dwg-msg"></div></div>
+  <div class="dwg-hint" id="dwg-hint"></div>
+</div>
 
 <div id="hint"><span class="txt"></span><button type="button" aria-label="მართვის მინიშნება" title="მართვის მინიშნება">?</button></div>
 <div id="legend" hidden><span><i class="sw"></i>PDF-ში მითითებული</span><span><i class="sw approx"></i>≈ გაზომილი / სავარაუდო</span></div>

@@ -10,6 +10,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildModel } from './model.js';
 import { DIMENSIONS, ROOMS } from './config.js';
+import { drawingsFor } from './drawings.js';
 
 const $ = (s) => document.querySelector(s);
 const stage = $('#stage');
@@ -505,6 +506,8 @@ function select(obj) {
     <table>${rows.join('')}</table>
     ${inf.note ? `<p class="note">${inf.note}</p>` : ''}`;
   card.hidden = false;
+  curDrawings = drawingsFor(inf);
+  $('#info-drawing').hidden = !curDrawings.length;
   needsRender = true;
 }
 
@@ -575,6 +578,120 @@ $('#zoom-in').addEventListener('click', () => zoomBy(1.35));
 $('#zoom-out').addEventListener('click', () => zoomBy(1 / 1.35));
 $('#info-close').addEventListener('click', () => select(null));
 $('#info-focus').addEventListener('click', () => focusOn(selected));
+
+// ------------------------------------------------------------------ ნახაზი PDF-დან
+// ობიექტის ფურცლები (PDF-ის სრული გვერდი, 3573 × 2526 px) — drawings/<id>.webp; ზუმი, გადაადგილება, გვერდები.
+let curDrawings = [];
+const DWG_DIR = 'drawings/';
+const dwg = { el: $('#dwg'), stage: $('#dwg-stage'), img: $('#dwg-img'), msg: $('#dwg-msg'), list: [], i: 0, s: 1, x: 0, y: 0, fitS: 1 };
+$('#dwg-hint').textContent = coarse
+  ? 'ორი თითი — ზუმი · ერთი თითი — გადაადგილება · ორმაგი შეხება — მიახლოება / მთლიანი ფურცელი'
+  : 'ბორბალი — ზუმი · გადათრევა — გადაადგილება · ორჯერ დაჭერა — მიახლოება / მთლიანი ფურცელი · ← → — გვერდები · Esc — დახურვა';
+const dwgApply = () => { dwg.img.style.transform = `translate(${dwg.x}px, ${dwg.y}px) scale(${dwg.s})`; };
+function dwgFit() {
+  const W = dwg.stage.clientWidth, H = dwg.stage.clientHeight, iw = dwg.img.naturalWidth, ih = dwg.img.naturalHeight;
+  if (!iw || !W) return;
+  dwg.fitS = Math.min((W - 20) / iw, (H - 20) / ih);
+  dwg.s = dwg.fitS;
+  dwg.x = (W - iw * dwg.s) / 2;
+  dwg.y = (H - ih * dwg.s) / 2;
+  dwgApply();
+}
+function dwgZoom(f, cx, cy) {
+  if (cx === undefined) { cx = dwg.stage.clientWidth / 2; cy = dwg.stage.clientHeight / 2; }
+  const ns = THREE.MathUtils.clamp(dwg.s * f, dwg.fitS * 0.8, 2.5);
+  const k = ns / dwg.s;
+  dwg.x = cx - (cx - dwg.x) * k;
+  dwg.y = cy - (cy - dwg.y) * k;
+  dwg.s = ns;
+  dwgApply();
+}
+function dwgShow(i) {
+  dwg.i = (i + dwg.list.length) % dwg.list.length;
+  const d = dwg.list[dwg.i];
+  $('#dwg-sub').textContent = `${d.sheet} · ${d.title} · ${d.pdf === 'plan' ? 'გეგმების' : 'ავეჯის'} PDF, გვ. ${d.page}`;
+  document.querySelectorAll('#dwg-tabs button').forEach((b, k) => b.classList.toggle('active', k === dwg.i));
+  const src = DWG_DIR + d.id + '.webp';
+  $('#dwg-open').href = src;
+  dwg.msg.textContent = 'ნახაზი იტვირთება…';
+  dwg.img.style.visibility = 'hidden';
+  dwg.img.onload = () => { dwg.msg.textContent = ''; dwg.img.style.visibility = ''; dwgFit(); };
+  dwg.img.onerror = () => {
+    dwg.msg.textContent = `ნახაზის ფაილი ვერ ჩაიტვირთა (${src}). branch-viewer.html-თან ერთად უნდა იყოს საქაღალდე „drawings“.`;
+  };
+  dwg.img.src = src;
+  dwg.list.forEach((o) => { if (o !== d) new Image().src = DWG_DIR + o.id + '.webp'; }); // დანარჩენი გვერდები წინასწარ
+}
+function dwgOpen() {
+  if (!curDrawings.length || !selected) return;
+  dwg.list = curDrawings;
+  const inf = selected.userData.info;
+  $('#dwg-title').textContent = `ნახაზი PDF-დან — ${inf.code ? inf.code + ' · ' : ''}${inf.name}`;
+  const tabs = $('#dwg-tabs');
+  tabs.innerHTML = dwg.list.map((d, k) => `<button type="button" data-i="${k}">${d.sheet}${d.pdf === 'plan' ? ' — გეგმა' : ''}</button>`).join('');
+  tabs.hidden = dwg.list.length < 2;
+  dwg.el.hidden = false;
+  dwgShow(0);
+}
+function dwgClose() { dwg.el.hidden = true; }
+$('#info-drawing').addEventListener('click', dwgOpen);
+$('#dwg-close').addEventListener('click', dwgClose);
+$('#dwg-in').addEventListener('click', () => dwgZoom(1.4));
+$('#dwg-out').addEventListener('click', () => dwgZoom(1 / 1.4));
+$('#dwg-fit').addEventListener('click', dwgFit);
+$('#dwg-tabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) dwgShow(+b.dataset.i); });
+dwg.stage.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const r = dwg.stage.getBoundingClientRect();
+  dwgZoom(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+{
+  const ptrs = new Map();
+  let pinch = null, tap = null, lastTap = null;
+  dwg.stage.addEventListener('pointerdown', (e) => {
+    dwg.stage.setPointerCapture?.(e.pointerId);
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    tap = ptrs.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: dwg.s }; }
+  });
+  dwg.stage.addEventListener('pointermove', (e) => {
+    const p = ptrs.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (ptrs.size === 1 && !pinch) { dwg.x += dx; dwg.y += dy; dwgApply(); }
+    else if (ptrs.size === 2 && pinch) {
+      const [a, b] = [...ptrs.values()], r = dwg.stage.getBoundingClientRect();
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      dwgZoom((pinch.s * d / pinch.d) / dwg.s, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
+    }
+  });
+  const up = (e) => {
+    ptrs.delete(e.pointerId);
+    if (ptrs.size < 2) pinch = null;
+    if (tap && ptrs.size === 0 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8 && performance.now() - tap.t < 350) {
+      const now = performance.now();
+      if (lastTap && now - lastTap.t < 380 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) {
+        const r = dwg.stage.getBoundingClientRect();
+        if (dwg.s > dwg.fitS * 1.05) dwgFit(); else dwgZoom(1 / dwg.s, e.clientX - r.left, e.clientY - r.top);
+        lastTap = null;
+      } else lastTap = { t: now, x: e.clientX, y: e.clientY };
+    }
+    tap = null;
+  };
+  dwg.stage.addEventListener('pointerup', up);
+  dwg.stage.addEventListener('pointercancel', up);
+}
+document.addEventListener('keydown', (e) => {
+  if (dwg.el.hidden) return;
+  if (e.key === 'Escape') dwgClose();
+  else if (e.key === 'ArrowRight') dwgShow(dwg.i + 1);
+  else if (e.key === 'ArrowLeft') dwgShow(dwg.i - 1);
+  else if (e.key === '+' || e.key === '=') dwgZoom(1.4);
+  else if (e.key === '-') dwgZoom(1 / 1.4);
+  else if (e.key === '0') dwgFit();
+});
+window.addEventListener('resize', () => { if (!dwg.el.hidden) dwgFit(); });
 
 function setAutoCenter(on) {
   autoCenter = on;
@@ -721,6 +838,6 @@ requestAnimationFrame(loop);
 
 // შემოწმებისთვის (კონსოლიდან)
 window.__branch = {
-  THREE, scene, root, groups, renderer, get composer() { return composer; }, get camera() { return camera; }, get controls() { return controls; }, setView, setLayer, select, focusOn, pick, zoomBy, setAutoCenter, get autoCenter() { return autoCenter; },
+  THREE, scene, root, groups, renderer, get composer() { return composer; }, get camera() { return camera; }, get controls() { return controls; }, setView, setLayer, select, focusOn, pick, zoomBy, dwgOpen, dwgState: () => ({ ...dwg, el: undefined, stage: undefined, img: undefined, msg: undefined, natural: [dwg.img.naturalWidth, dwg.img.naturalHeight] }), setAutoCenter, get autoCenter() { return autoCenter; },
   capture() { controls.update(); if (aoPass) aoPass.enabled = true; composer.render(); return renderer.domElement.toDataURL("image/png"); },
 };

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist');
-const types = { '.html': 'text/html; charset=utf-8', '.glb': 'model/gltf-binary', '.js': 'text/javascript', '.png': 'image/png' };
+const types = { '.html': 'text/html; charset=utf-8', '.glb': 'model/gltf-binary', '.js': 'text/javascript', '.png': 'image/png', '.webp': 'image/webp' };
 http.createServer((req, res) => {
   const p = path.join(dir, decodeURIComponent(new URL(req.url, 'http://x').pathname.replace(/^\/$/, '/branch-viewer.html')));
   if (!p.startsWith(dir) || !fs.existsSync(p)) { res.writeHead(404); return res.end('not found'); }
