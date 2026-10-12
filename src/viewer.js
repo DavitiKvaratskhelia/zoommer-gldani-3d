@@ -11,6 +11,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildModel } from './model.js';
 import { DIMENSIONS, ROOMS } from './config.js';
 import { drawingsFor } from './drawings.js';
+import { setNavLighting } from './lightbox-model.js';
 
 const $ = (s) => document.querySelector(s);
 const stage = $('#stage');
@@ -558,9 +559,19 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 function setActiveView(name) {
   document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
 }
-const layerTargets = { ceiling: groups.ceiling, exterior: groups.exterior, furniture: groups.furniture, dims };
+const layerTargets = { ceiling: groups.ceiling, exterior: groups.exterior, furniture: groups.furniture, dims, nav: groups.navigation };
+// ნავიგაციის განათება — მომხმარებლის ბოლო არჩევანი ინახება, როცა ნავიგაცია დამალულია
+let navLightOn = true;
+function setNavLight(on) {
+  navLightOn = on;
+  setNavLighting(on);
+  $('#nav-light').setAttribute('aria-pressed', String(on));
+  needsRender = true;
+}
+$('#nav-light').addEventListener('click', () => setNavLight(!navLightOn));
 function setLayer(key, on) {
   layerTargets[key].visible = on;
+  if (key === 'nav') $('#nav-light').disabled = !on;
   const btn = document.querySelector(`[data-layer="${key}"]`);
   btn.setAttribute('aria-pressed', String(on));
   if (key === 'dims') {
@@ -807,6 +818,8 @@ setLayer('ceiling', false);
 setLayer('exterior', true);
 setLayer('furniture', true);
 setLayer('dims', false);
+setLayer('nav', true);
+setNavLight(true);
 
 // კონტაქტური ჩრდილები (AO) ითვლება მხოლოდ მაშინ, როცა კამერა გაჩერებულია —
 // ტრიალი და ზუმი ამიტომ რჩება რბილი სუსტ მოწყობილობებზეც.
@@ -838,6 +851,6 @@ requestAnimationFrame(loop);
 
 // შემოწმებისთვის (კონსოლიდან)
 window.__branch = {
-  THREE, scene, root, groups, renderer, get composer() { return composer; }, get camera() { return camera; }, get controls() { return controls; }, setView, setLayer, select, focusOn, pick, zoomBy, dwgOpen, dwgState: () => ({ ...dwg, el: undefined, stage: undefined, img: undefined, msg: undefined, natural: [dwg.img.naturalWidth, dwg.img.naturalHeight] }), setAutoCenter, get autoCenter() { return autoCenter; },
+  THREE, scene, root, groups, renderer, get composer() { return composer; }, get camera() { return camera; }, get controls() { return controls; }, setView, setLayer, setNavLight, get navLightOn() { return navLightOn; }, select, focusOn, pick, zoomBy, dwgOpen, dwgState: () => ({ ...dwg, el: undefined, stage: undefined, img: undefined, msg: undefined, natural: [dwg.img.naturalWidth, dwg.img.naturalHeight] }), setAutoCenter, get autoCenter() { return autoCenter; },
   capture() { controls.update(); if (aoPass) aoPass.enabled = true; composer.render(); return renderer.domElement.toDataURL("image/png"); },
 };

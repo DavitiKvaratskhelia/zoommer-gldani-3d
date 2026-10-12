@@ -49,6 +49,8 @@ button{font:inherit;color:inherit}
 .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 .btn.primary:hover{background:#ff7d45}
 .btn:disabled{opacity:.55;cursor:progress}
+.btn.sub{margin-left:14px;grid-column:1/-1;width:calc(100% - 14px);min-height:34px}
+.btn.sub:disabled{opacity:.38;cursor:not-allowed}
 
 /* ინფორმაციის ბარათი */
 #info{position:fixed;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);left:max(14px,env(safe-area-inset-left));bottom:max(64px,calc(env(safe-area-inset-bottom) + 64px));width:340px;max-width:calc(100vw - 28px);background:var(--panel-solid);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:12px 14px 12px}
@@ -127,6 +129,7 @@ button{font:inherit;color:inherit}
   .toolbar .btn[aria-pressed]::after{right:4px;top:6px;margin-top:0;width:10px;height:10px;border-radius:3px}
   .toolbar .btn.wide{grid-column:auto}
   .toolbar .btn .t{display:none}
+  .toolbar .btn.sub{margin-left:0;width:auto}
   .toolbar .btn .ts{display:inline}
   #info{left:8px;right:8px;width:auto;max-width:none;bottom:calc(84px + env(safe-area-inset-bottom))}
   #hint{bottom:calc(84px + env(safe-area-inset-bottom));left:8px;max-width:calc(100vw - 16px);font-size:11px}
@@ -171,6 +174,8 @@ body.pseudo-fs .brand,body.pseudo-fs #hint{display:none}
     <button class="btn wide" data-layer="exterior" aria-pressed="true" title="გარე კედლების ჩვენება/დამალვა"><svg viewBox="0 0 24 24"><path d="M3 20V6h18v14"/><path d="M3 10h18"/></svg><span class="t">გარე კედლების ჩვენება/დამალვა</span><span class="ts">გარე კედლები</span></button>
     <button class="btn wide" data-layer="furniture" aria-pressed="true" title="ავეჯის ჩვენება/დამალვა"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="9" rx="1.5"/><path d="M6 14v5M18 14v5M4 9h16"/></svg><span class="t">ავეჯის ჩვენება/დამალვა</span><span class="ts">ავეჯი</span></button>
     <button class="btn wide" data-layer="dims" aria-pressed="false" title="ზომების ჩვენება/დამალვა"><svg viewBox="0 0 24 24"><path d="M3 17h18M3 14v6M21 14v6M7 17v-2M11 17v-3M15 17v-2"/><path d="M7 4h10l-2-2M17 4l-2 2"/></svg><span class="t">ზომების ჩვენება/დამალვა</span><span class="ts">ზომები</span></button>
+    <button class="btn wide" data-layer="nav" aria-pressed="true" title="ჭერზე დაკიდებული სანავიგაციო ლაითბოქსების (ZF-19) ჩვენება/დამალვა"><svg viewBox="0 0 24 24"><path d="M3 3h18M8 3v4M16 3v3"/><circle cx="8" cy="11" r="4"/><circle cx="16" cy="9.5" r="3.5"/></svg><span class="t">ჭერის ნავიგაცია</span><span class="ts">ნავიგაცია</span></button>
+    <button class="btn wide sub" id="nav-light" aria-pressed="true" title="მხოლოდ ნავიგაციის შიდა განათების ჩართვა/გამორთვა"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg><span class="t">ნავიგაციის განათება</span><span class="ts">ნავ. შუქი</span></button>
   </div>
   <div class="group">
     <h3>სხვა</h3>

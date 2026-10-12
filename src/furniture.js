@@ -10,6 +10,7 @@ import { mesh, lbox, flatExtrude, roundedRect, mat } from './model.js';
 import { H } from './config.js';
 import FONT_JSON from './assets/font-helvetiker-bold.js';
 import { LOGO_LATIN, LOGO_LOCKUP } from './assets/logos.js';
+import { adMaterial } from './lightbox-model.js';
 
 const DEG = Math.PI / 180;
 const mm = (v) => v / 1000;
@@ -120,7 +121,16 @@ function vitrine(o, g) {
     inW, Hs - 2 * t, mm(v.back), 0, y0 + Hs / 2, zB + mm(v.rear) + mm(v.back) / 2, 'whiteLam');
   if (v.lightbox) {
     const lb = rr(inW, Hs - 2 * t, rt - t, Math.max(rb - t, 0.002), false, 0, y0 + t);
-    M(g, exZ(lb, zB + 0.004, 0.006), 'lightbox', 'ლაითბოქსი (უკანა მხარე, განათებული)', { cast: false });
+    M(g, exZ(lb, zB + 0.004, 0.006), 'lightbox', 'ლაითბოქსის დიფუზორი (უკანა მხარე, განათებული)', { cast: false });
+    if (o.ad) {
+      // სარეკლამო გამოსახულება (Lightboxes PDF) — დიფუზორის გარე მხარეს, ჩარჩოს შიდა არეში (928 × 1728, ზედა R114)
+      const geo = new THREE.ShapeGeometry(lb, 24);
+      const p = geo.attributes.position, uv = geo.attributes.uv, hIn = Hs - 2 * t;
+      for (let i = 0; i < p.count; i++) uv.setXY(i, (p.getX(i) + inW / 2) / inW, (p.getY(i) - (y0 + t)) / hIn);
+      geo.rotateY(Math.PI); // გარედან (−Z) წაკითხვადი, სარკისებურის გარეშე
+      geo.translate(0, 0, zB + 0.0035);
+      M(g, geo, null, `ვერტიკალური ლაითბოქსის რეკლამა — ${o.ad.title}`, { cast: false, material: adMaterial(o.ad.tex, o.ad.title) });
+    }
   }
   // საყრდენი
   if (v.plinth) {
@@ -129,7 +139,9 @@ function vitrine(o, g) {
   }
   if (v.pipe) {
     const zp = zB + 0.05;
-    cylY(g, 'ავეჯის მილი Ø100 (იატაკიდან ჭერამდე)', 0.05, 0, H.ceiling, 0, zp, mk, 24);
+    // მილი კორპუსის შიგნით არ ჩანს (ლაითბოქსის დიფუზორის უკან) — მოდელირებულია ქვედა და ზედა ხილული ნაწილები
+    cylY(g, 'ავეჯის მილი Ø100 — ქვედა ნაწილი', 0.05, 0, y0, 0, zp, mk, 24);
+    cylY(g, 'ავეჯის მილი Ø100 — ზედა ნაწილი (ჭერამდე)', 0.05, y0 + Hs, H.ceiling - y0 - Hs, 0, zp, mk, 24);
     cylY(g, 'მილის ძირი Ø240', 0.12, 0, 0.01, 0, zp, 'metalDark', 32);
   }
   // შიდა თაროები

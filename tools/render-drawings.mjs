@@ -12,6 +12,7 @@ const out = path.resolve(here, '../dist/drawings');
 const SRC = {
   furniture: process.env.ZGMF_PDF || 'C:/Users/admin/Desktop/გლდანი სითი მოლი/ZGMF - ავეჯი - Update 2.pdf',
   plan: process.env.ZGMP_PDF || 'C:/Users/admin/Desktop/გლდანი სითი მოლი/ZGMP - გეგმები - Update 6.pdf',
+  lightbox: process.env.LB_PDF || 'C:/Users/admin/Desktop/გლდანი სითი მოლი/გლდანი - სითი მოლი Lightboxes.pdf',
 };
 const SCALE = 3, QUALITY = 82;   // 3573 × 2526 px — ზომები და შენიშვნები იკითხება სრულ მასშტაბზე
 
@@ -22,9 +23,11 @@ for (const [k, f] of Object.entries(SRC)) {
   docs[k] = await pdfjs.getDocument({ data: new Uint8Array(fs.readFileSync(f)), verbosity: 0 }).promise;
 }
 let total = 0;
+const only = process.argv.slice(2); // მაგ.: node tools/render-drawings.mjs f29 l02 — მხოლოდ ეს ფურცლები
 for (const [id, d] of Object.entries(DRAWING_PAGES)) {
+  if (only.length && !only.includes(id)) continue;
   const page = await docs[d.pdf].getPage(d.page);
-  const vp = page.getViewport({ scale: SCALE });
+  const vp = page.getViewport({ scale: d.pdf === 'lightbox' ? SCALE * 0.8 : SCALE });
   const c = createCanvas(Math.ceil(vp.width), Math.ceil(vp.height));
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#fff';

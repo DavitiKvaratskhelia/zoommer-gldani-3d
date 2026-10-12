@@ -7,6 +7,9 @@ import * as THREE from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { buildModel } from '../src/model.js';
+import { setTextureFactory } from '../src/lightbox-model.js';
+import { LB_TEX } from '../src/assets/lightbox-textures.js';
+import { loadImage } from '@napi-rs/canvas';
 
 // ფაქტურების (ბადე, პერფორაცია) PNG-ად ჩასაწერად Node-ში საჭიროა canvas
 import { createCanvas, ImageData as NapiImageData } from '@napi-rs/canvas';
@@ -18,7 +21,7 @@ globalThis.OffscreenCanvas ??= class {
   get height() { return this._c.height; }
   set height(v) { this._c.height = v; }
   getContext(type, opts) { return this._c.getContext(type, opts); }
-  async convertToBlob({ type = 'image/png' } = {}) { return new Blob([await this._c.encode(type === 'image/jpeg' ? 'jpeg' : 'png')], { type }); }
+  async convertToBlob({ type = 'image/png', quality } = {}) { return new Blob([await this._c.encode(type === 'image/jpeg' ? 'jpeg' : 'png', type === 'image/jpeg' ? Math.round((quality ?? 0.88) * 100) : undefined)], { type }); }
 };
 
 // GLTFExporter იყენებს FileReader-ს — Node-ში არ არსებობს
@@ -34,6 +37,17 @@ globalThis.FileReader ??= class {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const out = path.resolve(here, '../dist/branch-model.glb');
+
+// ლაითბოქსების/ნავიგაციის ტექსტურები: WebP → პიქსელები (DataTexture; რიგები შებრუნებულია, რომ ბრაუზერის ვერსიას დაემთხვეს)
+const decoded = new Map();
+for (const [id, url] of Object.entries(LB_TEX)) {
+  const img = await loadImage(Buffer.from(url.split(',')[1], 'base64'));
+  const c = createCanvas(img.width, img.height); const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  const src = g.getImageData(0, 0, img.width, img.height).data, row = img.width * 4, data = new Uint8Array(src.length);
+  for (let y = 0; y < img.height; y++) data.set(src.subarray(y * row, (y + 1) * row), (img.height - 1 - y) * row);
+  decoded.set(id, { data, w: img.width, h: img.height });
+}
+setTextureFactory((id) => { const d = decoded.get(id); const t = new THREE.DataTexture(d.data, d.w, d.h, THREE.RGBAFormat); t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.needsUpdate = true; return t; });
 
 const { root } = buildModel();
 const glb = await new GLTFExporter().parseAsync(root, { binary: true, onlyVisible: false });
@@ -65,7 +79,7 @@ function stripImages(b) {
   return { glb: Buffer.concat([head, js, rest]), imgCount };
 }
 const { glb: stripped, imgCount } = stripImages(buf);
-console.log('ჩაშენებული ფაქტურები (PNG):', imgCount);
+console.log('ჩაშენებული ტექსტურები:', imgCount);
 const ab = stripped.buffer.slice(stripped.byteOffset, stripped.byteOffset + stripped.byteLength);
 const gltf = await new GLTFLoader().parseAsync(ab, '');
 const scene = gltf.scene;
@@ -94,7 +108,7 @@ const find = (prefix) => { let r = null; scene.traverse((o) => { if (!r && o.nam
 const checks = [
   ['W-bottom', 'ქვედა კედელი (18.16 + 0.10 + 2.16 + ...)'],
   ['G-A1', 'ვიტრაჟი A 3.70'], ['G-B2', 'ვიტრაჟი B 7.38'], ['P-banks', 'ბანკების კედელი 3.47'],
-  ['ZF-08', 'სალარო Ø3.90'], ['C-1', 'სვეტი C-1 1.00×0.69'], ['ZF-01-1', 'ვიტრინა 1000×350×2050'], ['ZF-03-1', 'მაგიდა 2000×1000×900'],
+  ['ZF-08', 'სალარო Ø3.90'], ['C-1', 'სვეტი C-1 1.00×0.69'], ['ZF-01-1', 'ვიტრინა 1000×350×2050'], ['ZF-03-1', 'მაგიდა 2000×1000×900'], ['ZF-20-1', 'კედლის ლაითბოქსი 1800×800×120'], ['ZF_19_1', 'ნავიგაცია ZF-19-1'],
 ];
 for (const [p, label] of checks) {
   const o = find(p);

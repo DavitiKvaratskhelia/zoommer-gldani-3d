@@ -6,6 +6,9 @@ import {
   COLUMNS, FLOOR_OUTLINE, CEILING_OUTLINE, INLAYS, FURNITURE, concreteXAt,
 } from './config.js';
 import { BUILDERS, SHEETS, mergeByMaterial } from './furniture.js';
+import { buildWallLightboxes, buildNavigation } from './lightbox-model.js';
+import { VERTICAL_ADS } from './lightboxes.js';
+import { DRAWINGS_BY_CODE } from './drawings.js';
 
 const DEG = Math.PI / 180;
 const STATUS_TXT = { pdf: 'PDF', measured: 'ნახაზიდან გაზომილი', assumed: 'ვარაუდი' };
@@ -75,10 +78,10 @@ function texture(kind) {
 }
 
 // ------------------------------------------------------------------ დამხმარეები
-export function mesh(geo, matKey, name, { cast = true, receive = true } = {}) {
-  const m = new THREE.Mesh(geo, mat(matKey));
+export function mesh(geo, matKey, name, { cast = true, receive = true, material } = {}) {
+  const m = new THREE.Mesh(geo, material || mat(matKey));
   m.name = name;
-  m.castShadow = cast && !COLORS[matKey].opacity;
+  m.castShadow = cast && !(material ? material.transparent : COLORS[matKey].opacity);
   m.receiveShadow = receive;
   return m;
 }
@@ -261,6 +264,10 @@ function buildFurniture(o, i) {
   g.name = `${o.code} ${label}`.trim();
   const build = BUILDERS[o.type];
   if (!build) throw new Error('უცნობი ავეჯის ტიპი: ' + o.type);
+  // ვერტიკალური ლაითბოქსის რეკლამა (Lightboxes PDF, გვ. 7–10) — ფასადის მიხედვით
+  if (o.type === 'vitrine' && !o.ad) {
+    o.ad = VERTICAL_ADS.find((a) => (a.facade === 'B' ? Math.abs(o.x - 0.635) < 0.03 && Math.abs(o.z - a.at) < 0.01 : Math.abs(o.z - 0.625) < 0.03 && Math.abs(o.x - a.at) < 0.01));
+  }
   build(o, g);
   mergeByMaterial(g, o.code);
   g.position.set(o.x, 0, o.z);
@@ -271,8 +278,10 @@ function buildFurniture(o, i) {
   const size = o.size || { 'სიგანე': fmt(o.w), 'სიღრმე': fmt(o.d), 'სიმაღლე': fmt(o.h) };
   const status = o.sizeSt || { 'სიგანე': st.w, 'სიღრმე': st.d, 'სიმაღლე': st.h, 'მდებარეობა': st.pos };
   if (!o.sizeSt && st.pos) status['მდებარეობა'] = st.pos;
-  const notes = [sheet ? `წყარო: ${sheet} (ავეჯის PDF, გვ. ${page})` : null, o.note].filter(Boolean).join('. ');
-  info(g, { name: label, code: o.code, kind: 'ავეჯი', zone: o.zone, size, status, id: `F-${i + 1}`, note: notes || undefined, sheet, page });
+  const adNote = o.ad ? `ლაითბოქსის რეკლამა (ფასადის მხარეს): „${o.ad.title}“ — Lightboxes PDF, გვ. ${+o.ad.page.slice(1)}` : null;
+  const notes = [sheet ? `წყარო: ${sheet} (ავეჯის PDF, გვ. ${page})` : null, adNote, o.note].filter(Boolean).join('. ');
+  const drawings = o.ad ? [...(DRAWINGS_BY_CODE[o.code] || []).filter((d) => d !== 'p07'), o.ad.page, 'p07'] : undefined;
+  info(g, { name: label, code: o.code, kind: 'ავეჯი', zone: o.zone, size, status, id: `F-${i + 1}`, note: notes || undefined, sheet, page, drawings });
   return g;
 }
 
@@ -290,6 +299,8 @@ export function buildModel() {
     interior: mk('Interior_Partitions', 'შიდა ტიხრები'),
     ceiling: mk('Ceiling', 'ჭერი'),
     furniture: mk('Furniture', 'ავეჯი'),
+    lightboxes: mk('Wall_Lightboxes', 'კედლის ლაითბოქსები'),
+    navigation: mk('ceilingNavigationGroup', 'ჭერის ნავიგაცია (ZF-19)'),
   };
 
   // იატაკი
@@ -316,10 +327,14 @@ export function buildModel() {
 
   // ჭერი
   const ceil = mesh(flatExtrude(shapeFromPoints(CEILING_OUTLINE), H.ceiling, H.ceilingThk), 'ceiling', 'ჭერი — თაბაშირმუყაო RAL 9010 (4.10 მ)', { cast: false });
-  groups.ceiling.add(info(ceil, { name: 'ჭერი — თაბაშირმუყაო RAL 9010', code: 'ZGMP-12', kind: 'ჭერი', size: { 'ნიშნული': fmt(H.ceiling), 'ფართი (PDF)': '≈290 მ²' }, status: { 'ნიშნული': 'pdf', 'ფართი (PDF)': 'pdf' }, note: 'სანათები, რელსები და ლაითბოქსები მოდელში არ არის' }));
+  groups.ceiling.add(info(ceil, { name: 'ჭერი — თაბაშირმუყაო RAL 9010', code: 'ZGMP-12', kind: 'ჭერი', size: { 'ნიშნული': fmt(H.ceiling), 'ფართი (PDF)': '≈290 მ²' }, status: { 'ნიშნული': 'pdf', 'ფართი (PDF)': 'pdf' }, note: 'სანათები და რელსები მოდელში არ არის; ჭერის ნავიგაცია — ცალკე ჯგუფი (ZF-19)' }));
 
   // ავეჯი
   FURNITURE.forEach((o, i) => groups.furniture.add(buildFurniture(o, i)));
+
+  // ლაითბოქსები და ჭერის ნავიგაცია
+  buildWallLightboxes(groups.lightboxes);
+  buildNavigation(groups.navigation);
 
   root.updateMatrixWorld(true);
   return { root, groups };

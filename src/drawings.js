@@ -30,11 +30,25 @@ export const DRAWING_PAGES = {
   f26: { pdf: 'furniture', page: 26, sheet: 'ZGMF-204', title: 'ZF-16-2 — აქსესუარების კედელი' },
   f27: { pdf: 'furniture', page: 27, sheet: 'ZGMF-25', title: 'ZF-18 სმარტ კედელი, ZF-12 პედესტალი' },
   f28: { pdf: 'furniture', page: 28, sheet: 'ZGMF-26', title: 'ZF-18 / ZF-12 — 3D' },
+  f29: { pdf: 'furniture', page: 29, sheet: 'PL-07-2', title: 'ჭერის გეგმა — ნავიგაცია და ლაითბოქსები' },
+  f30: { pdf: 'furniture', page: 30, sheet: 'ZGMF-27', title: 'ZF-19-1, 19-2, 19-3, 19-10 — ნავიგაცია' },
+  f31: { pdf: 'furniture', page: 31, sheet: 'ZGMF-28', title: 'ZF-19-4, 19-5, 19-6 — ნავიგაცია' },
+  f32: { pdf: 'furniture', page: 32, sheet: 'ZGMF-29', title: 'ZF-19-7, 19-8, 19-9 — ნავიგაცია' },
+  f33: { pdf: 'furniture', page: 33, sheet: 'ZGMF-30', title: 'ZF-20-1, 20-2 — გრძივი ლაითბოქსები' },
+  l02: { pdf: 'lightbox', page: 2, sheet: 'Lightboxes 2', title: 'კედლის ლაითბოქსები — მობილურები' },
+  l03: { pdf: 'lightbox', page: 3, sheet: 'Lightboxes 3', title: 'კედლის ლაითბოქსები — სმარტი (+ Dyson ბონუსი)' },
+  l04: { pdf: 'lightbox', page: 4, sheet: 'Lightboxes 4', title: 'კედლის ლაითბოქსი — აიტი ტექნიკა' },
+  l05: { pdf: 'lightbox', page: 5, sheet: 'Lightboxes 5', title: 'კედლის ლაითბოქსი — ტელევიზორების სივრცე' },
+  l07: { pdf: 'lightbox', page: 7, sheet: 'Lightboxes 7', title: 'ვერტიკალური ლაითბოქსები — მობილურები' },
+  l08: { pdf: 'lightbox', page: 8, sheet: 'Lightboxes 8', title: 'ვერტიკალური ლაითბოქსები — გეიმინგი' },
+  l09: { pdf: 'lightbox', page: 9, sheet: 'Lightboxes 9', title: 'ვერტიკალური ლაითბოქსები — აიტი' },
+  l10: { pdf: 'lightbox', page: 10, sheet: 'Lightboxes 10', title: 'ვერტიკალური ლაითბოქსები — სმარტი' },
   p07: { pdf: 'plan', page: 7, sheet: 'ZGMP-06', title: 'ავეჯის მარკირებისა და განთავსების გეგმა' },
   p08: { pdf: 'plan', page: 8, sheet: 'ZGMP-07', title: 'ტიხრების მოწყობის გეგმა' },
   p09: { pdf: 'plan', page: 9, sheet: 'ZGMP-08', title: 'კედლების განშლა — სამღებრო სამუშაოები' },
   p10: { pdf: 'plan', page: 10, sheet: 'ZGMP-09', title: 'იატაკის გეგმა' },
   p13: { pdf: 'plan', page: 13, sheet: 'ZGMP-12', title: 'ჭერი — სამღებრო სამუშაოები' },
+  p12: { pdf: 'plan', page: 12, sheet: 'ZGMP-11', title: 'ჭერის გეგმა — ნავიგაცია და ლაითბოქსები' },
   p15: { pdf: 'plan', page: 15, sheet: 'ZGMP-14', title: 'ფასადი — შესასვლელების განშლა' },
 };
 
@@ -58,6 +72,6 @@ export const DRAWINGS_BY_KIND = [
 
 export function drawingsFor(info) {
   if (!info) return [];
-  const ids = DRAWINGS_BY_CODE[info.code] || DRAWINGS_BY_KIND.find(([k]) => (info.kind || '').startsWith(k))?.[1] || [];
+  const ids = info.drawings || DRAWINGS_BY_CODE[info.code] || DRAWINGS_BY_KIND.find(([k]) => (info.kind || '').startsWith(k))?.[1] || [];
   return ids.map((id) => ({ id, ...DRAWING_PAGES[id] }));
 }
