@@ -186,6 +186,9 @@ let needsRender = true;
 // ზუმი ცენტრისკენ მიდის, გადაადგილების შემდეგ ხედი რბილად ბრუნდება ცენტრში.
 // ფოკუსი (ორჯერ დაჭერა) ძალაშია, სანამ ობიექტი არჩეულია. გამორთვისას — ძველი რეჟიმი.
 let autoCenter = true;
+// დაშორების ზღვარი ეკრანზე მორგებულ ხედზე არანაკლები — ვიწრო (ვერტიკალურ) ტელეფონზე მთლიანი
+// ფილიალის ხედი 95 მ-ზე შორსაა და ზღვარი პირველი შეხებისას კამერას ახტუნებდა.
+let maxDist = 95;
 let focused = null;
 let dragging = false;
 
@@ -221,7 +224,7 @@ function makeControls(cam, target) {
   controls.zoomSpeed = 1.1;
   controls.panSpeed = 1.0;
   controls.minDistance = 0.35;
-  controls.maxDistance = 95;
+  controls.maxDistance = maxDist;
   controls.maxPolarAngle = Math.PI / 2 - 0.01;
   controls.minZoom = 0.35;
   controls.maxZoom = 40;
@@ -258,6 +261,8 @@ const DIRS = {
 
 function perspPose(dir, target = homeTarget, objCorners = fitCorners(), margin) {
   const d = fitDistance(persp, dir, target, objCorners, margin);
+  maxDist = Math.max(maxDist, d * 1.6);
+  if (controls) controls.maxDistance = maxDist;
   return { pos: target.clone().addScaledVector(dir, d), target: target.clone() };
 }
 
@@ -650,6 +655,20 @@ function hideHint() { hint.classList.add('collapsed'); }
 hint.querySelector('button').addEventListener('click', () => hint.classList.toggle('collapsed'));
 
 // ------------------------------------------------------------------ ზომის ცვლილება
+// ზომის ცვლილებისას (მაგ. ტელეფონზე მისამართის ზოლის გამოჩენა/დამალვა) კომპოზიტორი
+// მხოლოდ ზომას იცვლის — თავიდან აწყობა ჟესტის დროს ციმციმს და შეფერხებას იწვევდა.
+function resizeComposer(w, h) {
+  if (!composer) { buildComposer(); return; }
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(w, h);
+  if (aoPass) { const k = coarse ? 0.5 : 1; aoPass.setSize(Math.round(w * k), Math.round(h * k)); }
+}
+
+// ტელეფონზე ორი თითი მხოლოდ მოდელს ზუმავს — ბრაუზერის გვერდის ზუმი იბლოკება
+// (სხვაგვარად გვერდი დიდდებოდა და ინტერფეისი რესპონსივობას კარგავდა; iOS Safari).
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   if (!w || !h) return;
@@ -657,7 +676,7 @@ function resize() {
   labelRenderer.setSize(w, h);
   applyViewOffset();
   fitOrtho();
-  buildComposer();
+  resizeComposer(w, h);
   if (!userMoved && !tween) setView(viewName, false);
   needsRender = true;
 }

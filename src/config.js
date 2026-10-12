@@ -264,9 +264,9 @@ export const INLAYS = [
 //  45: გრძელი ღერძი „/“ მიმართულებით გეგმაზე).
 //  st: { w, d, h, pos } — ზომის სტატუსები.
 // ---------------------------------------------------------------------
-const HU = 2.05;  // measured — კედლის ვიტრინის სიმაღლე განშლებიდან (ZGMP-08) ≈2050
-const HT = 0.90;  // measured — მაგიდის სიმაღლე განშლიდან ≈900
-const unitSt = { w: 'pdf', d: 'pdf', h: 'measured', pos: 'pdf' };
+const HU = 2.05;  // pdf — ZGMF-01…06: ვიტრინის სიმაღლე 2050 (კორპუსი 1800 + 250)
+const HT = 0.90;  // pdf — ZGMF-09…11: მაგიდის სიმაღლე 900
+const unitSt = { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' };
 
 function row(code, label, zone, type, opts, centers) {
   return centers.map((c, i) => ({ code, name: label, zone, type, ...opts, ...(typeof c === 'number' ? { [opts.axis === 'z' ? 'z' : 'x']: c } : c), idx: i + 1, n: centers.length }));
@@ -275,80 +275,80 @@ function row(code, label, zone, type, opts, centers) {
 export const FURNITURE = [
   // ===== ფასადი A-ს გასწვრივ (400 მმ მინიდან, სიღრმე 450) =====
   ...row('ZF-01-6', 'კედლის ვიტრინა — პლანშეტები (tabs)', 'ფასადი A', 'unit',
-    { axis: 'x', z: 0.625, w: 1.0, d: 0.45, h: HU, rot: 0, pipe: true, color: 'furnOrange', st: unitSt }, [1.88, 2.88]),
+    { axis: 'x', z: 0.625, w: 1.0, d: 0.45, h: HU, rot: 0, pipe: true, lower: 0.76, color: 'furnOrange', st: unitSt }, [1.88, 2.88]),
   ...row('ZF-01-6', 'კედლის ვიტრინა — IT', 'ფასადი A', 'unit',
-    { axis: 'x', z: 0.625, w: 1.0, d: 0.45, h: HU, rot: 0, pipe: true, color: 'furnOrange', st: unitSt }, [6.85, 7.85, 8.85, 9.85]),
+    { axis: 'x', z: 0.625, w: 1.0, d: 0.45, h: HU, rot: 0, pipe: true, lower: 0.76, color: 'furnOrange', st: unitSt }, [6.85, 7.85, 8.85, 9.85]),
 
   // ===== გეიმინგ ზონა (ფასადი B, ზედა) =====
   ...row('ZF-01-5A', 'გეიმინგ ვიტრინა — PlayStation (ps)', 'გეიმინგ ზონა', 'unit',
-    { axis: 'z', x: 0.645, w: 1.0, d: 0.49, h: HU, rot: 90, pipe: true, color: 'furnPurple', st: unitSt }, [2.09, 3.09, 4.09, 5.09])
+    { axis: 'z', x: 0.645, w: 1.0, d: 0.49, h: HU, rot: 90, pipe: true, lower: 0.54, color: 'furnPurple', st: unitSt }, [2.09, 3.09, 4.09, 5.09])
     .map((u, i) => ({ ...u, code: ['ZF-01-5A-1', 'ZF-01-5A', 'ZF-01-5A', 'ZF-01-B'][i] })),
-  { code: 'ZF-15-3', name: 'PlayStation-ის სიმბოლოების ტოტემი', zone: 'გეიმინგ ზონა', type: 'totem', x: 0.61, z: 0.65, w: 0.47, d: 0.47, h: 2.40, rot: 45,
-    st: { w: 'measured', d: 'measured', h: 'assumed', pos: 'pdf' } },
+  { code: 'ZF-15-3', name: 'PlayStation-ის სიმბოლოების ტოტემი', zone: 'გეიმინგ ზონა', type: 'totem', x: 0.61, z: 0.65, w: 0.55, d: 0.50, h: 2.49, rot: 45,
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
 
   // ===== სვეტი C-1 =====
   { code: 'ZF-01-7', name: 'სმარტ საათების ვიტრინა (sm.watch)', zone: 'სვეტი C-1', type: 'unit', x: 2.573, z: 3.321, w: 1.0, d: 0.35, h: HU, rot: 0, color: 'furnOrange',
-    st: { w: 'pdf', d: 'measured', h: 'assumed', pos: 'pdf' } },
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
   { code: 'ZF-09-2', name: '„check“ სადგამი', zone: 'გეიმინგ ზონა', type: 'pedestal', x: 2.797, z: 5.466, w: 0.70, d: 0.70, h: 1.0,
-    st: { w: 'measured', d: 'measured', h: 'measured', pos: 'pdf' } },
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
 
   // ===== კომპიუტერები (comps) =====
   ...row('ZF-03-2', 'მაგიდა — კომპიუტერები (comps)', 'დარბაზი', 'table',
-    { axis: 'x', z: 2.95, w: 1.0, d: 2.0, h: HT, rot: 0, st: { w: 'pdf', d: 'pdf', h: 'measured', pos: 'pdf' } }, [5.943, 8.343]),
+    { axis: 'x', z: 2.95, w: 1.0, d: 2.0, h: HT, rot: 0, st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } }, [5.943, 8.343]),
   { code: 'ZF-03-3', name: 'მაგიდა — კომპიუტერები (comps)', zone: 'დარბაზი', type: 'table', x: 7.14, z: 5.85, w: 2.5, d: 1.0, h: HT, rot: 0,
-    st: { w: 'measured', d: 'pdf', h: 'measured', pos: 'pdf' } },
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
 
   // ===== ზედა მარჯვენა კუთხე =====
-  { code: 'ZF-16-1', name: 'აქსესუარების კედელი (acc x2)', zone: 'დარბაზი', type: 'peg', x: 11.745, z: 1.38, w: 2.0, d: 0.33, h: HU, rot: -90,
-    st: { w: 'pdf', d: 'measured', h: 'assumed', pos: 'pdf' } },
-  { code: 'ZF-09-1', name: '„check“ სადგამი სვეტთან', zone: 'სვეტი C-2', type: 'pedestal', x: 10.656, z: 2.77, w: 0.80, d: 0.80, h: 1.0,
-    st: { w: 'measured', d: 'measured', h: 'measured', pos: 'measured' } },
+  { code: 'ZF-16-1', name: 'აქსესუარების კედელი (acc x2)', zone: 'დარბაზი', type: 'peg', x: 11.735, z: 1.38, w: 2.0, d: 0.35, h: HU, rot: -90,
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
+  { code: 'ZF-09-1', name: 'ჩეკ-დესკი სვეტთან (ნახევარწრიული)', zone: 'სვეტი C-2', type: 'checkDesk', x: 10.656, z: 2.77, w: 1.0, d: 0.90, h: 1.0, rot: -90,
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'measured' } },
   { code: 'ZF-01-1', name: 'კედლის ვიტრინა — სმარტ მოწყობილობები (smart)', zone: 'დარბაზი', type: 'unit', x: 11.735, z: 3.71, w: 1.0, d: 0.35, h: HU, rot: -90, color: 'furnOrange',
-    st: { w: 'measured', d: 'pdf', h: 'measured', pos: 'measured' } },
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'measured' } },
 
   // ===== ჭკვიანი სახლი =====
-  { code: 'ZF-12-1', name: 'სმარტ მოწყობილობების სადგამები', zone: 'ჭკვიანი სახლი', type: 'stands', x: 11.205, z: 4.625, w: 0.27, d: 0.73, h: 1.40, rot: 0,
-    st: { w: 'measured', d: 'measured', h: 'measured', pos: 'measured' } },
-  { code: 'ZF-18', name: 'ჭკვიანი სახლის კედელი (სახლის ფორმის პანელი)', zone: 'ჭკვიანი სახლი', type: 'smartHome', x: 13.0115, z: 4.60, w: 2.333, d: 0.54, h: 2.58, eave: 1.84, rot: 0,
-    st: { w: 'pdf', d: 'measured', h: 'measured', pos: 'pdf' } },
-  { code: 'ZF-14-3', name: 'მრგვალი სადგამი (ჭკვიანი სახლი)', zone: 'ჭკვიანი სახლი', type: 'pedestal', x: 12.467, z: 6.213, w: 0.70, d: 0.70, h: 0.90, color: 'ral1016',
-    st: { w: 'measured', d: 'measured', h: 'assumed', pos: 'pdf' } },
+  { code: 'ZF-12', name: 'პედესტალი დაისონის მტვერსასრუტებისთვის (R500, ¾ წრე ყუთის გარშემო)', zone: 'ჭკვიანი სახლი', type: 'pedestal34', x: 11.36, z: 4.76, r: 0.5, w: 1.0, d: 1.0, h: 0.10, rot: 0,
+    st: { w: 'pdf', h: 'pdf', pos: 'pdf' } },
+  { code: 'ZF-18', name: 'ჭკვიანი სახლის კედელი (სახლის ფორმის პანელი)', zone: 'ჭკვიანი სახლი', type: 'smartHome', x: 13.04, z: 4.62, w: 2.39, d: 0.56, h: 2.59, eave: 1.75, rot: 0,
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
+  { code: 'ZF-14-3', name: 'მრგვალი სადგამი (ჭკვიანი სახლი)', zone: 'ჭკვიანი სახლი', type: 'pedestal', x: 12.467, z: 6.213, w: 0.70, d: 0.70, h: 1.00, color: 'ral1016',
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
   { code: 'ZF-03-1', name: 'მაგიდა — ჭკვიანი სახლი', zone: 'დარბაზი', type: 'table', x: 13.67, z: 8.13, w: 2.0, d: 1.0, h: HT, rot: 45,
-    st: { w: 'measured', d: 'measured', h: 'measured', pos: 'pdf' } },
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
   ...row('ZF-01-1', 'კედლის ვიტრინა — სმარტ მოწყობილობები (smart x3)', 'დარბაზი', 'unit',
     { axis: 'x', z: 4.505, w: 1.0, d: 0.35, h: HU, rot: 0, color: 'furnOrange', st: unitSt }, [14.932, 15.932, 16.932]),
 
   // ===== TV ზონა =====
-  { code: 'ZF-06', name: 'TV კედელი (დეტალები სავარაუდო — იხ. ავეჯის კრებული)', zone: 'TV ზონა', type: 'tvWall', x: 18.33, z: 7.53, w: 3.70, d: 0.30, h: H.ceiling, rot: -90,
-    st: { w: 'pdf', d: 'pdf', h: 'assumed', pos: 'pdf' } },
-  { code: 'ZF-07', name: 'პუფი (TV ზონა)', zone: 'TV ზონა', type: 'pouf', x: 16.25, z: 8.01, w: 0.78, d: 0.78, h: 0.45, st: { w: 'measured', d: 'measured', h: 'assumed', pos: 'pdf' } },
-  { code: 'ZF-07', name: 'პუფი (TV ზონა)', zone: 'TV ზონა', type: 'pouf', x: 16.72, z: 8.65, w: 0.78, d: 0.78, h: 0.45, st: { w: 'measured', d: 'measured', h: 'assumed', pos: 'pdf' } },
-  { code: 'ZF-09-2', name: '„check“ სადგამი', zone: 'TV ზონა', type: 'pedestal', x: 16.66, z: 6.18, w: 0.70, d: 0.70, h: 1.0, st: { w: 'measured', d: 'measured', h: 'measured', pos: 'pdf' } },
-  { code: 'ZF-02', name: '„O“ ვიტრინა (გეგმაზე აღნიშნულია „O“)', zone: 'დარბაზი', type: 'display', x: 15.42, z: 10.463, w: 1.93, d: 0.34, h: 1.0, rot: -45,
-    st: { w: 'measured', d: 'measured', h: 'assumed', pos: 'pdf' } },
+  { code: 'ZF-06', name: 'TV კედელი (8 ტელევიზორი: 40"–75")', zone: 'TV ზონა', type: 'tvWall', x: 18.2925, z: 7.53, w: 3.80, d: 0.375, h: 3.38, rot: -90,
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
+  { code: 'ZF-07', name: 'TV კუნძული — ცილინდრი Ø800 × 500', zone: 'TV ზონა', type: 'pouf', x: 16.25, z: 8.01, w: 0.80, d: 0.80, h: 0.50, st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
+  { code: 'ZF-07', name: 'TV კუნძული — ცილინდრი Ø1000 × 300', zone: 'TV ზონა', type: 'pouf', x: 16.72, z: 8.65, w: 1.00, d: 1.00, h: 0.30, st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
+  { code: 'ZF-09-2', name: '„check“ სადგამი', zone: 'TV ზონა', type: 'pedestal', x: 16.66, z: 6.18, w: 0.70, d: 0.70, h: 1.0, st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
+  { code: 'ZF-02', name: 'სათავსი „O“ (ღიობი 1000 × 1210)', zone: 'დარბაზი', type: 'oFrame', x: 15.42, z: 10.463, w: 1.96, d: 0.35, h: 2.05, rot: -45,
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
   { code: 'ZF-01-1', name: 'კედლის ვიტრინა — დრონები (drones)', zone: 'დარბაზი', type: 'unit', x: 17.985, z: 10.16, w: 1.0, d: 0.35, h: HU, rot: -90, color: 'furnOrange', st: unitSt },
   { code: 'ZF-01-1', name: 'კედლის ვიტრინა — კამერები (cams)', zone: 'დარბაზი', type: 'unit', x: 17.985, z: 11.16, w: 1.0, d: 0.35, h: HU, rot: -90, color: 'furnOrange', st: unitSt },
 
   // ===== სალარო და ცენტრი =====
-  { code: 'ZF-08', name: 'სალარო (წრიული დახლი)', zone: 'სალარო', type: 'ring', x: 9.621, z: 10.15, rOut: 1.94, rIn: 1.506, rInner: 1.15, a0: 50, a1: 387, h: 1.10, hInner: 0.75,
-    st: { w: 'measured', d: 'measured', h: 'measured', pos: 'measured' } },
-  { code: 'ZF-09-2', name: '„check“ სადგამი', zone: 'დარბაზი', type: 'pedestal', x: 13.386, z: 11.596, w: 0.70, d: 0.70, h: 1.0, st: { w: 'measured', d: 'measured', h: 'measured', pos: 'pdf' } },
-  { code: 'ZF-10-2', name: 'აუდიო სისტემის მაგიდა (audio)', zone: 'დარბაზი', type: 'audio', x: 4.943, z: 10.265, w: 1.08, d: 1.62, h: HT, rot: 0,
-    st: { w: 'pdf', d: 'pdf', h: 'assumed', pos: 'pdf' } },
-  { code: 'ZF-09-1', name: '„check“ სადგამი სვეტთან', zone: 'სვეტი C-3', type: 'pedestal', x: 2.599, z: 10.919, w: 1.0, d: 1.0, h: 1.0,
-    st: { w: 'measured', d: 'measured', h: 'measured', pos: 'measured' } },
+  { code: 'ZF-08', name: 'სალარო (წრიული დახლი)', zone: 'სალარო', type: 'ring', x: 9.621, z: 10.15, rOut: 1.95, rIn: 1.50, rInner: 1.20, a0: 50, a1: 387, h: 1.10, hInner: 0.74,
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'measured' } },
+  { code: 'ZF-09-2', name: '„check“ სადგამი', zone: 'დარბაზი', type: 'pedestal', x: 13.386, z: 11.596, w: 0.70, d: 0.70, h: 1.0, st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
+  { code: 'ZF-10-2', name: 'აუდიო სისტემის მაგიდა (audio)', zone: 'დარბაზი', type: 'audio', x: 4.943, z: 10.265, w: 1.09, d: 1.618, h: HT, rot: 0,
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
+  { code: 'ZF-09-1', name: 'ჩეკ-დესკი სვეტთან (ნახევარწრიული)', zone: 'სვეტი C-3', type: 'checkDesk', x: 2.599, z: 10.919, w: 1.0, d: 0.90, h: 1.0, rot: 180,
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'measured' } },
 
   // ===== სპორტული კუთხე (ფასადი B) =====
-  { code: 'ZF-15-2', name: 'სპორტული კუთხე — პალმის ფორმის დეკორი', zone: 'სპორტული კუთხე', type: 'palm', x: 0.395, z: 9.72, w: 0.31, d: 1.36, h: 2.60, rot: 0,
-    st: { w: 'measured', d: 'measured', h: 'measured', pos: 'pdf' } },
+  { code: 'ZF-15-2', name: 'სპორტული კუთხე — პალმის ფორმის დეკორი', zone: 'სპორტული კუთხე', type: 'palm', x: 0.395, z: 9.72, w: 0.70, d: 1.35, h: 2.78, rot: 0,
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } },
 
   // ===== მობილურები (ფასადი B, ქვედა) =====
   ...row('ZF-01-6', 'კედლის ვიტრინა — მობილურები (mobs x4)', 'ფასადი B', 'unit',
-    { axis: 'z', x: 0.625, w: 1.0, d: 0.45, h: HU, rot: 90, pipe: true, color: 'furnOrange', st: unitSt }, [12.19, 13.19, 14.19, 15.19]),
+    { axis: 'z', x: 0.625, w: 1.0, d: 0.45, h: HU, rot: 90, pipe: true, lower: 0.76, color: 'furnOrange', st: unitSt }, [12.19, 13.19, 14.19, 15.19]),
   ...row('ZF-03-1', 'მაგიდა — მობილურები (mobs)', 'დარბაზი', 'table',
-    { axis: 'x', z: 13.73, w: 1.0, d: 2.0, h: HT, rot: 0, st: { w: 'pdf', d: 'pdf', h: 'measured', pos: 'pdf' } }, [2.73, 4.93, 7.13]),
+    { axis: 'x', z: 13.73, w: 1.0, d: 2.0, h: HT, rot: 0, st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } }, [2.73, 4.93, 7.13]),
   ...row('ZF-04', 'აქსესუარების სადგამი (acc x4)', 'დარბაზი', 'gondola',
-    { axis: 'x', z: 13.936, w: 1.95, d: 0.38, h: 1.80, rot: 45, st: { w: 'measured', d: 'measured', h: 'assumed', pos: 'pdf' } }, [10.346, 13.236]),
+    { axis: 'x', z: 13.936, w: 2.0, d: 0.40, h: 1.50, rot: 45, st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' } }, [10.346, 13.236]),
 
   // ===== ქვედა კედელი (სიღრმე 350, წინა მხარე −Z) =====
   ...row('ZF-01-1', 'კედლის ვიტრინა — მობილურები (mobs x3)', 'ქვედა კედელი', 'unit',
@@ -360,10 +360,10 @@ export const FURNITURE = [
   ...row('ZF-01-1', 'კედლის ვიტრინა — მობილურები (mobs x2)', 'ქვედა კედელი', 'unit',
     { axis: 'x', z: 16.105, w: 1.0, d: 0.35, h: HU, rot: 180, color: 'furnOrange', st: unitSt }, [13.34, 14.34]),
 
-  // ===== ბანკები (ZF-05-2: მაგიდა 800×700, 1100 კედლამდე) =====
+  // ===== ბანკები (ZF-05-2: მაგიდა 700 (მომხმარებლის მხარე) × 800 × 750, 1100 კედლამდე) =====
   ...BANK_BAYS.map((b) => ({
     code: 'ZF-05-2', name: `ბანკის მაგიდა ${b.i + 1} (banks)`, zone: 'ბანკები', type: 'bankDesk', x: 16.66, z: (b.z[0] + b.z[1]) / 2, w: 0.80, d: 0.70, h: 0.75, rot: 0,
-    st: { w: 'pdf', d: 'pdf', h: 'assumed', pos: 'pdf' },
+    st: { w: 'pdf', d: 'pdf', h: 'pdf', pos: 'pdf' },
   })),
 ];
 
@@ -415,11 +415,11 @@ export const DIMENSIONS = [
   { a: [0.85, 12.4], b: [2.23, 12.4], off: [0, 0], text: '1380', status: 'pdf' },
   { a: [16.26, 12.6], b: [17.06, 12.6], off: [0, 0], text: '800', status: 'pdf' },
   { a: [17.06, 12.6], b: [18.16, 12.6], off: [0, 0], text: '1100', status: 'pdf' },
-  { a: [7.681, 10.15], b: [11.561, 10.15], off: [0, 0], y: 1.25, text: '≈Ø3880 (სალარო)', status: 'measured' },
+  { a: [7.671, 10.15], b: [11.571, 10.15], off: [0, 0], y: 1.25, text: 'Ø3900 (სალარო)', status: 'pdf' },
   // სიმაღლეები (ვერტიკალური)
   { a: [-0.6, -0.6], b: [-0.6, -0.6], v: [0, 3.0], text: '3000 (ვიტრაჟი)', status: 'pdf' },
   { a: [-1.2, -1.2], b: [-1.2, -1.2], v: [0, 4.1], text: '4100 (ჭერი)', status: 'pdf' },
   { a: [-0.6, -0.6], b: [-0.6, -0.6], v: [3.0, 3.8], text: '800 (ზოლი)', status: 'pdf' },
   { a: [-0.3, 16.9], b: [-0.3, 16.9], v: [0, 4.5], text: '4500 (H4500)', status: 'pdf' },
-  { a: [1.88, 0.95], b: [1.88, 0.95], v: [0, HU], text: '≈2050 (ვიტრინა)', status: 'measured' },
+  { a: [1.88, 0.95], b: [1.88, 0.95], v: [0, HU], text: '2050 (ვიტრინა)', status: 'pdf' },
 ];
