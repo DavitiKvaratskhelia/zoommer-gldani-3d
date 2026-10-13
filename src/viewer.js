@@ -13,6 +13,7 @@ import { DIMENSIONS, ROOMS } from './config.js';
 import { drawingsFor } from './drawings.js';
 import { setNavLighting } from './lightbox-model.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { lightSources, setDiffuserGlow } from './lighting-model.js';
 import { SIM, SHEETS, MM_PER_PT, LIGHT_H, sheetPx } from './lighting.js';
 import { SPEC_IMG } from './assets/lighting-specs.js';
@@ -85,6 +86,7 @@ const swapInlayMaterials = (forExport) => {
   for (const [m, [orig, view]] of inlayMats) m.material = forExport ? orig : view;
 };
 
+
 const bbox = new THREE.Box3().setFromObject(root);
 const center = bbox.getCenter(new THREE.Vector3());
 const size = bbox.getSize(new THREE.Vector3());
@@ -103,6 +105,42 @@ const homeTarget = new THREE.Vector3(center.x, 0.6, center.z);
 const helpers = new THREE.Group();
 helpers.name = 'helpers';
 scene.add(helpers);
+
+// განათების სისტემა, ცხაურები, ლუქები — ~450 პატარა ობიექტი. ცალ-ცალკე ხატვა (და ჩრდილის რუკაში ხელახლა)
+// ტრიალს ანელებდა, ამიტომ ეკრანზე იხატება მასალების მიხედვით გაერთიანებული რამდენიმე მეში (helpers-ში,
+// GLB-ში არ შედის). ორიგინალი ობიექტები რჩება უხილავი მასალით — არჩევისთვის, ბარათისთვის, კონტურისთვის;
+// GLB-ის ექსპორტისას მათ ორიგინალი მასალები უბრუნდებათ.
+const PROXY_MAT = new THREE.MeshBasicMaterial({ visible: false });
+const proxyMats = new Map();
+const batched = {};
+for (const key of ['lighting', 'vents', 'hatches']) {
+  const holder = new THREE.Group();
+  holder.name = `${key} — batched render`;
+  helpers.add(holder);
+  batched[key] = holder;
+  const buckets = new Map();
+  groups[key].updateMatrixWorld(true);
+  groups[key].traverse((m) => {
+    if (!m.isMesh) return;
+    if (!buckets.has(m.material)) buckets.set(m.material, { geos: [], cast: false });
+    const b = buckets.get(m.material);
+    b.geos.push(m.geometry.clone().applyMatrix4(m.matrixWorld));
+    b.cast ||= m.castShadow;
+    proxyMats.set(m, m.material);
+    m.material = PROXY_MAT;
+    m.castShadow = false;
+  });
+  for (const [mat, b] of buckets) {
+    const mesh = new THREE.Mesh(mergeGeometries(b.geos, false), mat);
+    mesh.name = `${key} / ${mat.name}`;
+    mesh.castShadow = b.cast;
+    mesh.receiveShadow = true;
+    holder.add(mesh);
+  }
+}
+const swapProxyMaterials = (forExport) => {
+  for (const [m, mat] of proxyMats) m.material = forExport ? mat : PROXY_MAT;
+};
 
 const basePts = [[-0.55, -0.55], [12.46, -0.55], [12.46, 3.78], [21.25, 3.78], [21.06, 16.83], [-0.55, 16.83]];
 {
@@ -190,6 +228,10 @@ scene.add(fill);
 const lightRig = new THREE.Group();
 lightRig.name = 'light sources (viewer only)';
 scene.add(lightRig);
+const fastRig = new THREE.Group();
+fastRig.name = 'light sources — fast (camera moving)';
+fastRig.visible = false;
+scene.add(fastRig);
 let rigSimplified = false;
 function clusterSources(src, k) {
   // k-means (წონა — ნაკადი); თითო ჯგუფი — კვადრატი, ფართობი = წყაროების ჯამური ფართობი
@@ -227,6 +269,23 @@ function clusterSources(src, k) {
     l.userData = { flux: q.flux, ids: q.ids, kind: q.kind, fluxIsAssumed: !!q.fluxIsAssumed };
     lightRig.add(l);
   }
+  // მოძრაობის რეჟიმი: 52 ფართობის წყარო ინტეგრირებულ GPU-ზე კადრს ~2-ჯერ ანელებს, ამიტომ კამერის
+  // მოძრაობისას (როგორც AO) მუშაობს 8 იაფი, ქვემოთ მიმართული წყარო იგივე ჯამური ნაკადით; გაჩერებისას —
+  // ზუსტი ფართობის წყაროები. ორივე შეიდერი წინასწარ კომპილირდება (გადართვა შეფერხების გარეშეა).
+  for (const q of clusterSources(lightSources(), 8)) {
+    const sp = new THREE.SpotLight(0xffffff, 0, 0, Math.PI / 2 * 0.96, 1, 2);
+    sp.position.set(q.x, q.y, q.z);
+    sp.target.position.set(q.x, 0, q.z);
+    sp.userData = { flux: q.flux };
+    fastRig.add(sp, sp.target);
+  }
+}
+let fastLights = false;
+function setFastLights(on) {
+  if (fastLights === on) return;
+  fastLights = on;
+  lightRig.visible = !on;
+  fastRig.visible = on;
 }
 // ფერის ტემპერატურა → წრფივი sRGB ფერი, სიკაშკაშე (Y) = 1 — ნაკადი K-ის ცვლილებისას არ იცვლება.
 // პლანკის ლოკუსი: Kim et al. (2002) კუბური მიახლოება; XYZ → sRGB (D65).
@@ -249,6 +308,11 @@ function applyLighting() {
   for (const l of lightRig.children) {
     l.color.copy(c);
     l.power = lightsOn ? l.userData.flux * SIM.photometricScale : 0;
+  }
+  for (const l of fastRig.children) {
+    if (!l.isSpotLight) continue;
+    l.color.copy(c);
+    l.power = lightsOn ? l.userData.flux * SIM.photometricScale : 0; // SpotLight: power = I·π — ღერძზე იგივე ძალა, რაც ლამბერტის ზედაპირს
   }
   setDiffuserGlow(lightsOn, c);
   updateLumCard();
@@ -777,6 +841,7 @@ function setNavLight(on) {
 $('#nav-light').addEventListener('click', () => setNavLight(!navLightOn));
 function setLayer(key, on) {
   layerTargets[key].visible = on;
+  if (batched[key]) batched[key].visible = on;
   if (key === 'nav') $('#nav-light').disabled = !on;
   const btn = document.querySelector(`[data-layer="${key}"]`);
   btn.setAttribute('aria-pressed', String(on));
@@ -1072,8 +1137,10 @@ $('#glb').addEventListener('click', () => {
   toast('GLB ფაილი მზადდება…');
   // სრული მოდელი — დამალული ჯგუფების ჩათვლით; ზომები, ბადე და მონიშვნა არ შედის
   swapInlayMaterials(true);
+  swapProxyMaterials(true);
   new GLTFExporter().parse(root, (res) => {
     swapInlayMaterials(false);
+    swapProxyMaterials(false);
     const blob = new Blob([res], { type: 'model/gltf-binary' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -1086,6 +1153,7 @@ $('#glb').addEventListener('click', () => {
     toast(`GLB ჩამოიტვირთა (${(blob.size / 1048576).toFixed(1)} MB)`);
   }, (err) => {
     swapInlayMaterials(false);
+    swapProxyMaterials(false);
     btn.disabled = false;
     console.error(err);
     toast('GLB ექსპორტი ვერ მოხერხდა');
@@ -1151,6 +1219,19 @@ setLayer('vents', true);
 setLayer('hatches', true);
 setCct(SIM.cctDefault);
 setLightsOn(true);
+// ზუსტი განათების (52 ფართობის წყარო) შეიდერები კომპილირდება ფონურად (KHR_parallel_shader_compile):
+// ჩატვირთვისას მოდელი მაშინვე ჩანს სწრაფი წყაროებით, მზადყოფნისთანავე კი ზუსტ განათებაზე გადადის.
+let fullLightsReady = false, fullCompileStarted = false;
+setFastLights(true);
+function startFullLightsCompile() {
+  // იწყება პირველი კადრის შემდეგ — სხვაგვარად GPU ჯერ ამ შეიდერებს ამუშავებს და მოდელი გვიან ჩნდება
+  fullCompileStarted = true;
+  setTimeout(() => {
+    setFastLights(false);
+    renderer.compileAsync(scene, persp).catch(() => {}).finally(() => { fullLightsReady = true; aoDirty = true; needsRender = true; });
+    setFastLights(true);
+  }, 60);
+}
 
 // კონტაქტური ჩრდილები (AO) ითვლება მხოლოდ მაშინ, როცა კამერა გაჩერებულია —
 // ტრიალი და ზუმი ამიტომ რჩება რბილი სუსტ მოწყობილობებზეც.
@@ -1171,8 +1252,10 @@ function loop(now) {
   const idle = now - lastMove > 180;
   if (composer && (moving || needsRender || (aoDirty && idle))) {
     if (aoPass) aoPass.enabled = idle && !moving;
+    setFastLights(!(idle && !moving && fullLightsReady));
     composer.render();
     labelRenderer.render(scene, camera);
+    if (!fullCompileStarted) startFullLightsCompile();
     needsRender = false;
     if (!aoPass || aoPass.enabled) aoDirty = false;
   }
@@ -1182,6 +1265,6 @@ requestAnimationFrame(loop);
 
 // შემოწმებისთვის (კონსოლიდან)
 window.__branch = {
-  THREE, scene, root, groups, renderer, get composer() { return composer; }, get camera() { return camera; }, get controls() { return controls; }, setView, setLayer, setNavLight, get navLightOn() { return navLightOn; }, select, focusOn, pick, zoomBy, dwgOpen, dwgState: () => ({ ...dwg, el: undefined, stage: undefined, img: undefined, msg: undefined, natural: [dwg.img.naturalWidth, dwg.img.naturalHeight] }), setAutoCenter, get autoCenter() { return autoCenter; }, lightRig, setLightsOn, setCct, get lightsOn() { return lightsOn; }, get cct() { return cct; }, cctColor, rigSimplified, schState: () => ({ ...sch }),
+  THREE, scene, root, groups, renderer, get composer() { return composer; }, get camera() { return camera; }, get controls() { return controls; }, setView, setLayer, setNavLight, get navLightOn() { return navLightOn; }, select, focusOn, pick, zoomBy, dwgOpen, dwgState: () => ({ ...dwg, el: undefined, stage: undefined, img: undefined, msg: undefined, natural: [dwg.img.naturalWidth, dwg.img.naturalHeight] }), setAutoCenter, get autoCenter() { return autoCenter; }, lightRig, fastRig, setFastLights, get fullLightsReady() { return fullLightsReady; }, setLightsOn, setCct, get lightsOn() { return lightsOn; }, get cct() { return cct; }, cctColor, rigSimplified, schState: () => ({ ...sch }),
   capture() { controls.update(); if (aoPass) aoPass.enabled = true; composer.render(); return renderer.domElement.toDataURL("image/png"); },
 };
