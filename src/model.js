@@ -7,6 +7,7 @@ import {
 } from './config.js';
 import { BUILDERS, SHEETS, mergeByMaterial } from './furniture.js';
 import { buildWallLightboxes, buildNavigation } from './lightbox-model.js';
+import { buildLighting } from './lighting-model.js';
 import { VERTICAL_ADS } from './lightboxes.js';
 import { DRAWINGS_BY_CODE } from './drawings.js';
 
@@ -301,6 +302,10 @@ export function buildModel() {
     furniture: mk('Furniture', 'ავეჯი'),
     lightboxes: mk('Wall_Lightboxes', 'კედლის ლაითბოქსები'),
     navigation: mk('ceilingNavigationGroup', 'ჭერის ნავიგაცია (ZF-19)'),
+    // განათების სისტემა (ZGMP-10/12) — მხოლოდ ფიზიკური ობიექტები; სინათლის წყაროები სანახავშია, ცალკე
+    lighting: mk('Lighting_Fixtures', 'განათების სისტემა: რელსები, PPL 9033-T, PLED 5060'),
+    vents: mk('Ventilation_Grilles', 'სავენტილაციო ცხაურები'),
+    hatches: mk('Service_Hatches', 'მომსახურების ლუქები'),
   };
 
   // იატაკი
@@ -327,7 +332,7 @@ export function buildModel() {
 
   // ჭერი
   const ceil = mesh(flatExtrude(shapeFromPoints(CEILING_OUTLINE), H.ceiling, H.ceilingThk), 'ceiling', 'ჭერი — თაბაშირმუყაო RAL 9010 (4.10 მ)', { cast: false });
-  groups.ceiling.add(info(ceil, { name: 'ჭერი — თაბაშირმუყაო RAL 9010', code: 'ZGMP-12', kind: 'ჭერი', size: { 'ნიშნული': fmt(H.ceiling), 'ფართი (PDF)': '≈290 მ²' }, status: { 'ნიშნული': 'pdf', 'ფართი (PDF)': 'pdf' }, note: 'სანათები და რელსები მოდელში არ არის; ჭერის ნავიგაცია — ცალკე ჯგუფი (ZF-19)' }));
+  groups.ceiling.add(info(ceil, { name: 'ჭერი — თაბაშირმუყაო RAL 9010', code: 'ZGMP-12', kind: 'ჭერი', size: { 'ნიშნული': fmt(H.ceiling), 'ფართი (PDF)': '≈290 მ²' }, status: { 'ნიშნული': 'pdf', 'ფართი (PDF)': 'pdf' }, note: 'განათების სისტემა, ცხაურები, ლუქები და ჭერის ნავიგაცია — ცალკე ფენები (ჭერის დამალვა მათ არ მალავს)' }));
 
   // ავეჯი
   FURNITURE.forEach((o, i) => groups.furniture.add(buildFurniture(o, i)));
@@ -335,6 +340,9 @@ export function buildModel() {
   // ლაითბოქსები და ჭერის ნავიგაცია
   buildWallLightboxes(groups.lightboxes);
   buildNavigation(groups.navigation);
+
+  // განათების სისტემა, სავენტილაციო ცხაურები, მომსახურების ლუქები
+  buildLighting(groups);
 
   root.updateMatrixWorld(true);
   return { root, groups };

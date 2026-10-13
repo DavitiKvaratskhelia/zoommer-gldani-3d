@@ -114,6 +114,70 @@ button{font:inherit;color:inherit}
 .room span{font-size:11px;color:#e3e6ea}
 .facade{font-size:12px;font-weight:700;color:#fff;background:#f0561d;padding:2px 8px;border-radius:6px;white-space:nowrap}
 
+/* სანათის ბარათი: ჩანართები, სპეციფიკაცია, სქემა */
+#info{max-height:calc(100vh - 150px);overflow:auto;overscroll-behavior:contain}
+#info.lum{width:384px}
+.ltabs{display:flex;gap:2px;margin:2px 0 10px;border-bottom:1px solid var(--line)}
+.ltab{border:0;background:transparent;color:var(--muted);padding:7px 11px;font-size:12.5px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;border-radius:8px 8px 0 0}
+.ltab:hover{color:var(--text);background:var(--btn)}
+.ltab.active{color:#fff;border-bottom-color:var(--accent)}
+.lhead{display:flex;gap:11px;align-items:center;margin-bottom:8px}
+.lhead img{width:92px;height:84px;object-fit:cover;border-radius:9px;background:#c9c9c9;flex:none}
+.lhead b{display:block;font-size:14px}
+.lhead span{display:block;font-size:12px;color:var(--muted);line-height:1.35}
+.sub{font-size:11px;color:var(--muted);line-height:1.35}
+#info table.spec th{white-space:normal;vertical-align:top;width:40%;padding-right:8px}
+#info table.spec td{text-align:left;line-height:1.4;padding:4px 0}
+#info table.spec tr + tr{border-top:1px solid rgba(255,255,255,.05)}
+.na{color:var(--meas);font-size:11.5px}
+.sch-sheets{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.sch-sheets button{border:1px solid var(--line);background:var(--btn);color:var(--muted);border-radius:99px;padding:4px 10px;font-size:12px;cursor:pointer}
+.sch-sheets button.active{border-color:var(--accent);color:#fff;background:var(--accent-soft)}
+.sch-sheets span{font-size:11px;color:var(--muted)}
+.sch-stage{position:relative;height:260px;border-radius:10px;overflow:hidden;background:#2a2c31;touch-action:none;cursor:grab}
+.sch-stage:active{cursor:grabbing}
+#sch-img{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none;background:#fff;max-width:none}
+.sch-tools{display:flex;gap:6px;margin-top:6px;align-items:center}
+.sch-tools .dwg-btn{width:34px;height:34px;font-size:18px}
+.sch-tools .btn{min-height:34px;margin-left:auto}
+.dmark{position:absolute;border:2.5px solid #ff5a1f;background:rgba(255,90,31,.2);box-shadow:0 0 0 1.5px rgba(255,255,255,.85);pointer-events:none;transform-origin:50% 50%}
+.dring{position:absolute;width:46px;height:46px;margin:-23px 0 0 -23px;border:2px solid #ff5a1f;border-radius:50%;pointer-events:none;animation:dring 1.6s ease-out infinite}
+@keyframes dring{0%{transform:scale(.55);opacity:1}100%{transform:scale(1.7);opacity:0}}
+
+/* ფერის ტემპერატურის ბარი */
+#cct{position:fixed;right:calc(max(14px,env(safe-area-inset-right)) + 246px);bottom:max(14px,env(safe-area-inset-bottom));width:min(390px,calc(100vw - 300px));background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:8px 8px 8px 12px;z-index:3}
+.cct-head{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.cct-head svg,.cct-reset svg,.cct-x svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.cct-head b{font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cct-val{font-variant-numeric:tabular-nums;font-weight:700;color:#fff;background:var(--accent-soft);border:1px solid rgba(255,106,43,.5);border-radius:8px;padding:2px 8px;font-size:12.5px;white-space:nowrap}
+.cct-x{width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;display:grid;place-items:center;flex:none}
+.cct-x:hover{background:var(--btn-hover);color:var(--text)}
+.cct-x svg{transition:transform .2s}
+#cct.collapsed .cct-x svg{transform:rotate(180deg)}
+#cct.collapsed .cct-body{display:none}
+.cct-row{display:flex;align-items:center;gap:6px;margin-top:8px}
+.cct-b{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--btn);cursor:pointer;font-size:18px;line-height:1;flex:none}
+.cct-b:hover,.cct-reset:not(:disabled):hover{background:var(--btn-hover);border-color:rgba(255,255,255,.2)}
+.cct-reset{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 9px;border-radius:9px;border:1px solid var(--line);background:var(--btn);cursor:pointer;font-size:12px;flex:none;white-space:nowrap}
+.cct-reset:disabled{opacity:.45;cursor:default}
+#cct-range{flex:1;min-width:70px;height:32px;-webkit-appearance:none;appearance:none;background:transparent;margin:0;cursor:pointer}
+#cct-range:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+#cct-range::-webkit-slider-runnable-track{height:8px;border-radius:99px;background:linear-gradient(90deg,#ff9a4a 0%,#ffc489 22%,#fff0dd 48%,#eef2ff 70%,#bcd0ff 100%);box-shadow:inset 0 0 0 1px rgba(0,0,0,.3)}
+#cct-range::-moz-range-track{height:8px;border-radius:99px;background:linear-gradient(90deg,#ff9a4a 0%,#ffc489 22%,#fff0dd 48%,#eef2ff 70%,#bcd0ff 100%);box-shadow:inset 0 0 0 1px rgba(0,0,0,.3)}
+#cct-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;margin-top:-6px;border-radius:50%;background:#fff;border:3.5px solid var(--accent);box-shadow:0 1px 5px rgba(0,0,0,.55)}
+#cct-range::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:3.5px solid var(--accent);box-shadow:0 1px 5px rgba(0,0,0,.55)}
+.cct-scale{display:flex;justify-content:space-between;gap:8px;margin-top:4px;padding-right:4px;font-size:10.5px;color:var(--muted);white-space:nowrap}
+.cct-sim{color:var(--meas);overflow:hidden;text-overflow:ellipsis}
+.cct-off{display:none;margin-top:4px;font-size:11px;color:var(--muted)}
+#cct.off .cct-row{opacity:.6}
+#cct.off .cct-off{display:block}
+@media (min-width:761px) and (max-width:1120px){
+  #info{bottom:calc(max(14px,env(safe-area-inset-bottom)) + 112px)}
+}
+@media (min-width:761px){
+  #hint{max-width:max(210px,calc(100vw - 700px))}
+}
+
 /* ტელეფონი / ვიწრო ეკრანი */
 @media (max-width: 760px){
   .brand{padding:8px 11px;max-width:calc(100vw - 28px)}
@@ -136,10 +200,16 @@ button{font:inherit;color:inherit}
   #legend{top:auto;bottom:calc(84px + env(safe-area-inset-bottom));font-size:11px}
   #info:not([hidden]) ~ #hint{display:none}
   #toast{bottom:calc(90px + env(safe-area-inset-bottom))}
+  #info{max-height:calc(100vh - 230px)}
+  #cct{left:8px;right:8px;width:auto;bottom:auto;top:calc(max(14px,env(safe-area-inset-top)) + 52px);padding:6px 6px 6px 10px}
+  .cct-row{margin-top:6px}
+  .cct-scale .cct-sim{display:none}
 }
 @media (max-width: 760px) and (max-height: 500px){
   .brand{display:none}
+  #cct{top:8px;left:auto;right:8px;width:min(360px,62vw)}
 }
+body.pseudo-fs #cct{opacity:.92}
 body.is-fs .brand{opacity:.85}
 body.pseudo-fs .brand,body.pseudo-fs #hint{display:none}
 </style>
@@ -176,6 +246,10 @@ body.pseudo-fs .brand,body.pseudo-fs #hint{display:none}
     <button class="btn wide" data-layer="dims" aria-pressed="false" title="ზომების ჩვენება/დამალვა"><svg viewBox="0 0 24 24"><path d="M3 17h18M3 14v6M21 14v6M7 17v-2M11 17v-3M15 17v-2"/><path d="M7 4h10l-2-2M17 4l-2 2"/></svg><span class="t">ზომების ჩვენება/დამალვა</span><span class="ts">ზომები</span></button>
     <button class="btn wide" data-layer="nav" aria-pressed="true" title="ჭერზე დაკიდებული სანავიგაციო ლაითბოქსების (ZF-19) ჩვენება/დამალვა"><svg viewBox="0 0 24 24"><path d="M3 3h18M8 3v4M16 3v3"/><circle cx="8" cy="11" r="4"/><circle cx="16" cy="9.5" r="3.5"/></svg><span class="t">ჭერის ნავიგაცია</span><span class="ts">ნავიგაცია</span></button>
     <button class="btn wide sub" id="nav-light" aria-pressed="true" title="მხოლოდ ნავიგაციის შიდა განათების ჩართვა/გამორთვა"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg><span class="t">ნავიგაციის განათება</span><span class="ts">ნავ. შუქი</span></button>
+    <button class="btn wide" data-layer="lighting" aria-pressed="true" title="რელსების, სანათების კორპუსების, საკიდებისა და სამაგრების ჩვენება/დამალვა — შუქზე არ მოქმედებს"><svg viewBox="0 0 24 24"><path d="M3 4h18M8 4v3M16 4v3"/><rect x="4" y="7" width="8" height="2.6" rx=".8"/><rect x="13" y="7" width="7" height="2.6" rx=".8"/><path d="M12 12v3"/><path d="M7.5 15h9l-1 3h-7z"/></svg><span class="t">განათების სისტემის ჩვენება/დამალვა</span><span class="ts">სანათები</span></button>
+    <button class="btn wide" id="lights-on" aria-pressed="true" title="სინათლის წყაროების ჩართვა/გამორთვა (PPL 9033-T, PLED 5060) — ნავიგაციის განათებაზე არ მოქმედებს"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 6a5 5 0 0 0-3 9c.6.5 1 1.2 1 2h4c0-.8.4-1.5 1-2a5 5 0 0 0-3-9z"/><path d="M12 1.5v1.5M4.2 4.2l1.1 1.1M19.8 4.2l-1.1 1.1M2 11h1.5M20.5 11H22"/></svg><span class="t">განათების ჩართვა/გამორთვა</span><span class="ts">შუქი</span></button>
+    <button class="btn wide" data-layer="vents" aria-pressed="true" title="სავენტილაციო ცხაურების ჩვენება/დამალვა"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1.5"/><rect x="7.5" y="7.5" width="9" height="9" rx=".5"/><path d="M7.5 10h9M7.5 12h9M7.5 14h9"/></svg><span class="t">სავენტილაციო ცხაურები</span><span class="ts">ცხაურები</span></button>
+    <button class="btn wide" data-layer="hatches" aria-pressed="true" title="მომსახურების ლუქების ჩვენება/დამალვა"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1"/><path d="M5 5l14 14M19 5L5 19" stroke-dasharray="2 2.2"/></svg><span class="t">მომსახურების ლუქები</span><span class="ts">ლუქები</span></button>
   </div>
   <div class="group">
     <h3>სხვა</h3>
@@ -190,6 +264,25 @@ body.pseudo-fs .brand,body.pseudo-fs #hint{display:none}
   <div class="actions"><button class="btn" id="info-focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>ობიექტზე ფოკუსი</button><button class="btn" id="info-drawing" hidden title="ობიექტის ნახაზი PDF-დან"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg>ნახაზი PDF-დან</button></div>
 </section>
 
+<section id="cct" aria-label="განათების ტემპერატურა">
+  <div class="cct-head">
+    <svg viewBox="0 0 24 24"><path d="M10 14.6V5a2 2 0 0 1 4 0v9.6a4 4 0 1 1-4 0z"/><path d="M12 9v7"/></svg>
+    <b>განათების ტემპერატურა</b>
+    <output id="cct-val" for="cct-range">4000 K</output>
+    <button type="button" class="cct-x" id="cct-collapse" aria-expanded="true" aria-label="ბარის ჩაკეცვა / გაშლა" title="ჩაკეცვა / გაშლა"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+  </div>
+  <div class="cct-body">
+    <div class="cct-row">
+      <button type="button" class="cct-b" id="cct-minus" aria-label="100 K-ით ნაკლები" title="−100 K (თბილი)">−</button>
+      <input type="range" id="cct-range" min="2700" max="6500" step="100" value="4000" aria-label="ფერის ტემპერატურა, კელვინი">
+      <button type="button" class="cct-b" id="cct-plus" aria-label="100 K-ით მეტი" title="+100 K (ცივი)">+</button>
+      <button type="button" class="cct-reset" id="cct-reset" title="საწყისი მნიშვნელობა — 4000 K (სპეციფიკაცია)"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/></svg>4000 K</button>
+    </div>
+    <div class="cct-scale"><span>2700 K · თბილი</span><span class="cct-sim" title="სპეციფიკაციით სანათები 4000 K-ია, On-Off დრაივერით — ფერის ცვლილება ამ სანათების დადასტურებული შესაძლებლობა არ არის">ვიზუალური სიმულაცია · სპეც.: 4000 K</span><span>ცივი · 6500 K</span></div>
+    <div class="cct-off">შუქი გამორთულია — არჩეული მნიშვნელობა შეინახება და ჩართვისას გამოიყენება</div>
+  </div>
+</section>
+
 <div id="dwg" hidden role="dialog" aria-modal="true" aria-label="ნახაზი PDF-დან">
   <div class="dwg-bar">
     <div class="dwg-title"><b id="dwg-title"></b><span id="dwg-sub"></span></div>
@@ -202,7 +295,7 @@ body.pseudo-fs .brand,body.pseudo-fs #hint{display:none}
     </div>
   </div>
   <div class="dwg-tabs" id="dwg-tabs"></div>
-  <div class="dwg-stage" id="dwg-stage"><img id="dwg-img" alt="" draggable="false"><div class="dwg-msg" id="dwg-msg"></div></div>
+  <div class="dwg-stage" id="dwg-stage"><img id="dwg-img" alt="" draggable="false"><div class="dmark" id="dwg-mark" hidden></div><div class="dring" id="dwg-ring" hidden></div><div class="dwg-msg" id="dwg-msg"></div></div>
   <div class="dwg-hint" id="dwg-hint"></div>
 </div>
 

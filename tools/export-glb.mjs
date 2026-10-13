@@ -109,6 +109,7 @@ const checks = [
   ['W-bottom', 'ქვედა კედელი (18.16 + 0.10 + 2.16 + ...)'],
   ['G-A1', 'ვიტრაჟი A 3.70'], ['G-B2', 'ვიტრაჟი B 7.38'], ['P-banks', 'ბანკების კედელი 3.47'],
   ['ZF-08', 'სალარო Ø3.90'], ['C-1', 'სვეტი C-1 1.00×0.69'], ['ZF-01-1', 'ვიტრინა 1000×350×2050'], ['ZF-03-1', 'მაგიდა 2000×1000×900'], ['ZF-20-1', 'კედლის ლაითბოქსი 1800×800×120'], ['ZF_19_1', 'ნავიგაცია ZF-19-1'],
+  ['TR-1_1', 'რელსი 3.0 მ (სხივი 0°)'], ['PPL-01', 'PPL 9033-T 1000×74'], ['PLED-01', 'PLED 5060 Ø500×100 + ტროსი'], ['VG-1', 'ცხაური 640×640'], ['SH-1', 'ლუქი 400×400'],
 ];
 for (const [p, label] of checks) {
   const o = find(p);
@@ -116,5 +117,8 @@ for (const [p, label] of checks) {
   const b = new THREE.Box3().setFromObject(o), s = b.getSize(new THREE.Vector3());
   console.log(`  ${p.padEnd(9)} ${label.padEnd(42)} → ${s.x.toFixed(3)} × ${s.y.toFixed(3)} × ${s.z.toFixed(3)}`);
 }
+const lg = top.children.find((c) => c.name === 'Lighting_Fixtures');
+console.log('განათება:', lg.children.map((c) => `${c.name} ${c.children.length}`).join(', '), '· ცხაურები', top.children.find((c) => c.name === 'Ventilation_Grilles').children.length, '· ლუქები', top.children.find((c) => c.name === 'Service_Hatches').children.length);
+console.log('extras (PPL-01):', JSON.stringify(find('PPL-01').userData.fixture));
 const extras = find('ZF-08').userData;
 console.log('extras (ZF-08):', JSON.stringify(extras).slice(0, 160) + '…');

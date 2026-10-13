@@ -47,7 +47,8 @@ export const DRAWING_PAGES = {
   p08: { pdf: 'plan', page: 8, sheet: 'ZGMP-07', title: 'ტიხრების მოწყობის გეგმა' },
   p09: { pdf: 'plan', page: 9, sheet: 'ZGMP-08', title: 'კედლების განშლა — სამღებრო სამუშაოები' },
   p10: { pdf: 'plan', page: 10, sheet: 'ZGMP-09', title: 'იატაკის გეგმა' },
-  p13: { pdf: 'plan', page: 13, sheet: 'ZGMP-12', title: 'ჭერი — სამღებრო სამუშაოები' },
+  p11: { pdf: 'plan', page: 11, sheet: 'ZGMP-10', title: 'ჭერის გეგმა — განათების სქემა (რელსები, სანათები, ცხაურები, ლუქები)' },
+  p13: { pdf: 'plan', page: 13, sheet: 'ZGMP-12', title: 'ჭერი — წერტ. განათება, სამღებრო სამუშაოები' },
   p12: { pdf: 'plan', page: 12, sheet: 'ZGMP-11', title: 'ჭერის გეგმა — ნავიგაცია და ლაითბოქსები' },
   p15: { pdf: 'plan', page: 15, sheet: 'ZGMP-14', title: 'ფასადი — შესასვლელების განშლა' },
 };

@@ -12,6 +12,10 @@ import { buildModel } from './model.js';
 import { DIMENSIONS, ROOMS } from './config.js';
 import { drawingsFor } from './drawings.js';
 import { setNavLighting } from './lightbox-model.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+import { lightSources, setDiffuserGlow } from './lighting-model.js';
+import { SIM, SHEETS, MM_PER_PT, LIGHT_H, sheetPx } from './lighting.js';
+import { SPEC_IMG } from './assets/lighting-specs.js';
 
 const $ = (s) => document.querySelector(s);
 const stage = $('#stage');
@@ -26,6 +30,14 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.9;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+// RectAreaLight-ების ციკლს three.js „ხსნის“ (unroll) — 50+ წყაროზე შეიდერი ძალიან იზრდება და კომპილაცია
+// (განსაკუთრებით Windows/ANGLE-ზე) წამობით გრძელდება. ციკლი რჩება ჩვეულებრივ ციკლად — WebGL2 ამას უშვებს.
+THREE.ShaderChunk.lights_fragment_begin = THREE.ShaderChunk.lights_fragment_begin.replace(
+  /#pragma unroll_loop_start\s*(for \( int i = 0; i < NUM_RECT_AREA_LIGHTS; i \+\+ \) \{[^}]*\})\s*#pragma unroll_loop_end/,
+  '$1',
+);
+RectAreaLightUniformsLib.init();
 
 const labelRenderer = new CSS2DRenderer({ element: $('#labels') });
 
@@ -168,11 +180,79 @@ scene.add(sun, sun.target);
 const fill = new THREE.DirectionalLight('#cfdcff', 0.45);
 fill.position.set(center.x + 14, 10, center.z + 10);
 scene.add(fill);
-// თბილი შიდა განათება (ჭერის სანათების იმიტაცია; GLB-ში არ შედის)
-for (const [x, z] of [[4.5, 4.0], [9.6, 10.2], [4.5, 13.0], [15.2, 11.0]]) {
-  const l = new THREE.PointLight('#ffcf9c', 7, 12, 2);
-  l.position.set(x, 3.7, z);
-  helpers.add(l);
+// ჭერის სანათების წინანდელი იმიტაცია (4 წერტილოვანი წყარო) ჩანაცვლებულია რეალური განათების სისტემით (ქვემოთ).
+
+// ------------------------------------------------------------------ განათების სისტემა: სინათლის წყაროები
+// ZGMP-10/12 სანათები: ფიზიკური ობიექტები — groups.lighting (ფენა „განათების სისტემა“); სინათლის წყაროები —
+// ცალკე ჯგუფი სცენაში (ფენების ღილაკები მას არ ეხება). RectAreaLight — სინათლე მოდის დიფუზორის მთელი
+// ზედაპირიდან (ლამბერტი), არა ერთი წერტილიდან. power (lm) → intensity (nit) = Φ / (π·A) — ამას three.js აკეთებს.
+// ექსპოზიცია ფიქსირებულია (renderer.toneMappingExposure); ყველა წყაროს ნაკადი მრავლდება SIM.photometricScale-ზე.
+const lightRig = new THREE.Group();
+lightRig.name = 'light sources (viewer only)';
+scene.add(lightRig);
+let rigSimplified = false;
+function clusterSources(src, k) {
+  // k-means (წონა — ნაკადი); თითო ჯგუფი — კვადრატი, ფართობი = წყაროების ჯამური ფართობი
+  let cs = src.filter((_, i) => i % Math.ceil(src.length / k) === 0).slice(0, k).map((q) => ({ x: q.x, z: q.z }));
+  let asg = [];
+  for (let it = 0; it < 12; it++) {
+    asg = src.map((q) => { let b = 0, bd = Infinity; cs.forEach((c, i) => { const d = (c.x - q.x) ** 2 + (c.z - q.z) ** 2; if (d < bd) { bd = d; b = i; } }); return b; });
+    cs = cs.map((c, i) => {
+      const m = src.filter((_, j) => asg[j] === i);
+      if (!m.length) return c;
+      const w = m.reduce((a, q) => a + q.flux, 0);
+      return { x: m.reduce((a, q) => a + q.x * q.flux, 0) / w, z: m.reduce((a, q) => a + q.z * q.flux, 0) / w };
+    });
+  }
+  return cs.map((c, i) => {
+    const m = src.filter((_, j) => asg[j] === i);
+    if (!m.length) return null;
+    const side = Math.sqrt(m.reduce((a, q) => a + q.w * q.h, 0));
+    return { kind: 'cluster', ids: m.flatMap((q) => q.ids), x: c.x, z: c.z, y: Math.min(...m.map((q) => q.y)), ux: 1, uz: 0, w: side, h: side, flux: m.reduce((a, q) => a + q.flux, 0) };
+  }).filter(Boolean);
+}
+{
+  let src = lightSources();
+  // სუსტ GPU-ზე (ფრაგმენტის uniform-ების მცირე ლიმიტი) წყაროები ერთიანდება სივრცულ ჯგუფებად — ნაკადი იგივეა
+  const gl = renderer.getContext();
+  const budget = gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) || 1024;
+  const maxRect = Math.floor((budget - 170) / 4);
+  if (src.length > maxRect) { src = clusterSources(src, Math.max(6, maxRect)); rigSimplified = true; }
+  const basis = new THREE.Matrix4();
+  for (const q of src) {
+    const l = new THREE.RectAreaLight(0xffffff, 0, q.w, q.h);
+    const X = new THREE.Vector3(q.ux, 0, q.uz).normalize(), Z = new THREE.Vector3(0, 1, 0), Y = new THREE.Vector3().crossVectors(Z, X);
+    l.quaternion.setFromRotationMatrix(basis.makeBasis(X, Y, Z)); // ადგილობრივი −Z = ქვემოთ — ასხივებს იატაკისკენ
+    l.position.set(q.x, q.y, q.z);
+    l.userData = { flux: q.flux, ids: q.ids, kind: q.kind, fluxIsAssumed: !!q.fluxIsAssumed };
+    lightRig.add(l);
+  }
+}
+// ფერის ტემპერატურა → წრფივი sRGB ფერი, სიკაშკაშე (Y) = 1 — ნაკადი K-ის ცვლილებისას არ იცვლება.
+// პლანკის ლოკუსი: Kim et al. (2002) კუბური მიახლოება; XYZ → sRGB (D65).
+function cctColor(T) {
+  const T2 = T * T, T3 = T2 * T;
+  const x = T <= 4000 ? -0.2661239e9 / T3 - 0.2343589e6 / T2 + 0.8776956e3 / T + 0.179910 : -3.0258469e9 / T3 + 2.1070379e6 / T2 + 0.2226347e3 / T + 0.240390;
+  const x2 = x * x, x3 = x2 * x;
+  const y = T <= 2222 ? -1.1063814 * x3 - 1.34811020 * x2 + 2.18555832 * x - 0.20219683
+    : T <= 4000 ? -0.9549476 * x3 - 1.37418593 * x2 + 2.09137015 * x - 0.16748867
+      : 3.0817580 * x3 - 5.87338670 * x2 + 3.75112997 * x - 0.37001483;
+  const X = x / y, Z = (1 - x - y) / y;
+  const r = Math.max(0, 3.2406 * X - 1.5372 - 0.4986 * Z), g = Math.max(0, -0.9689 * X + 1.8758 + 0.0415 * Z), b = Math.max(0, 0.0557 * X - 0.2040 + 1.0570 * Z);
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return new THREE.Color().setRGB(r / lum, g / lum, b / lum, THREE.LinearSRGBColorSpace);
+}
+let lightsOn = true;
+let cct = SIM.cctDefault; // გამორთვისას ინახება და ჩართვისას ისევ გამოიყენება
+function applyLighting() {
+  const c = cctColor(cct);
+  for (const l of lightRig.children) {
+    l.color.copy(c);
+    l.power = lightsOn ? l.userData.flux * SIM.photometricScale : 0;
+  }
+  setDiffuserGlow(lightsOn, c);
+  updateLumCard();
+  needsRender = true;
 }
 
 // ------------------------------------------------------------------ კამერები
@@ -466,12 +546,102 @@ function pick(clientX, clientY) {
   ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
   const hits = raycaster.intersectObject(root, true);
-  for (const h of hits) {
+  for (let i = 0; i < hits.length; i++) {
+    const h = hits[i];
     if (h.object.userData.noPick || !isShown(h.object)) continue;
     const ir = infoRoot(h.object);
-    if (ir) return ir;
+    if (!ir) continue;
+    // ზემოდან რელსი ფარავს მის ქვეშ დაკიდებულ სანათს — თუ სანათი რელსის უშუალოდ ქვემოთაა, ირჩევა სანათი
+    if (ir.userData.info.kind === 'განათების რელსი') {
+      for (let k = i + 1; k < hits.length && hits[k].distance - h.distance < 0.12; k++) {
+        const lr = isShown(hits[k].object) && infoRoot(hits[k].object);
+        if (lr?.userData.info.lum) return lr;
+      }
+    }
+    return ir;
   }
   return null;
+}
+
+// ორიენტირებული კონტური (სანათები, რელსები, ცხაურები, ლუქები) — ობიექტის საკუთარ ღერძებში
+const selOutline = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: '#ff5a1f', depthTest: false, transparent: true }));
+selOutline.matrixAutoUpdate = false;
+selOutline.visible = false;
+selOutline.renderOrder = 21;
+helpers.add(selOutline);
+function outlineObject(obj) {
+  obj.updateMatrixWorld(true);
+  const inv = obj.matrixWorld.clone().invert(), b = new THREE.Box3(), mtx = new THREE.Matrix4();
+  obj.traverse((o) => {
+    if (!o.isMesh) return;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    b.union(o.geometry.boundingBox.clone().applyMatrix4(mtx.multiplyMatrices(inv, o.matrixWorld)));
+  });
+  const size = b.getSize(new THREE.Vector3()).addScalar(0.03), c = b.getCenter(new THREE.Vector3());
+  selOutline.matrix.multiplyMatrices(obj.matrixWorld, new THREE.Matrix4().compose(c, new THREE.Quaternion(), size));
+  selOutline.matrixWorldNeedsUpdate = true;
+  selOutline.visible = true;
+}
+
+// სანათის ბარათი: „სპეციფიკაცია“ / „სქემა“
+const NA = '<span class="na">სპეციფიკაციაში მითითებული არ არის</span>';
+const DWG_BY_SHEET = Object.fromEntries(Object.entries(SHEETS).map(([k, v]) => [v.drawing, k]));
+function markPx(mark, dwgId) {
+  const sh = DWG_BY_SHEET[dwgId];
+  if (!sh || !mark) return null;
+  const [px, py] = sheetPx(sh, mark.x, mark.z);
+  const k = 1000 / MM_PER_PT * 3;
+  const w = (mark.len ?? mark.d ?? mark.sq) * k, h = (mark.wid ?? mark.d ?? mark.sq) * k;
+  return { px, py, w, h, ang: mark.ang || 0, round: mark.d != null };
+}
+function lumCardHtml(inf) {
+  const f = inf.lum, sp = f.spec, lin = f.kind === 'linear';
+  const row = (k, v) => `<tr><th>${k}</th><td>${v ?? NA}</td></tr>`;
+  const dims = lin
+    ? `სიგრძე 1000 მმ <span class="badge ok">სპეც.</span><br>სიგანე ≈${Math.round(f.W * 1000)} მმ <span class="badge meas">≈ ნახაზიდან</span><br>სიმაღლე ${Math.round(f.H * 1000)} მმ <span class="badge asm">ვარაუდი</span>`
+    : 'Ø 500 მმ · H 100 მმ <span class="badge ok">სპეც.</span>';
+  const mount = lin
+    ? `რელსი ${LIGHT_H.rail.toFixed(2)} მ <span class="badge ok">ZGMP-10</span><br>დიფუზორი ≈${f.yBottom.toFixed(2)} მ <span class="badge asm">ვარაუდი</span>`
+    : `ზედა სიბრტყე ${f.yTop.toFixed(2)} მ, ქვედა ${f.yBottom.toFixed(2)} მ <span class="badge meas">ZGMP-12 შენიშვნა</span><br>ტროსი ≈${Math.round((LIGHT_H.ceiling - f.yTop) * 1000)} მმ (სპეც.: 600 სმ — მაქსიმალური სიგრძე)`;
+  const flux = sp.flux
+    ? `${sp.flux} lm <span class="badge ok">სპეც.</span>`
+    : `${NA}<br><span class="sub">სიმულაციაში პირობითად ${SIM.pledVisualFlux} lm — მხოლოდ ვიზუალიზაცია, 35 W-იდან არ არის გამოთვლილი</span>`;
+  return `
+    <div class="meta">${inf.code} · ${inf.kind}${inf.zone ? ' · ' + inf.zone : ''}</div>
+    <h2>${inf.name}</h2>
+    <div class="ltabs" role="tablist"><button type="button" class="ltab active" data-tab="spec" role="tab">სპეციფიკაცია</button><button type="button" class="ltab" data-tab="scheme" role="tab">სქემა</button></div>
+    <div class="lpane" data-pane="spec">
+      <div class="lhead"><img src="${SPEC_IMG[sp.image]}" alt="${f.model}"><div><b>${f.model}</b><span>${sp.type}</span>${lin ? '' : '<span class="sub">ფოტო — მწარმოებლის (შავი კორპუსი); პროექტში კორპუსი თეთრია, RAL 9010</span>'}</div></div>
+      <table class="spec">
+        ${row('უნიკალური ID', `<b>${f.id}</b>`)}
+        ${row('მოდელი / ტიპი', `${f.model} — ${sp.type}`)}
+        ${row('ზომები', dims)}
+        ${row('კორპუსის ფერი', sp.color)}
+        ${row('სიმძლავრე', `${sp.power} W`)}
+        ${row('სინათლის ნაკადი', flux)}
+        ${row('ფერის ტემპ. (სპეც.)', `${sp.cct} K`)}
+        ${row('ფერის ტემპ. (სიმულაცია)', '<span id="lc-cct"></span>')}
+        ${row('კორპუსის მასალა', sp.body)}
+        ${row('დიფუზორი', sp.diffuser)}
+        ${row('LED', sp.led)}
+        ${row('დრაივერი', sp.driver)}
+        ${row('დაცვის კლასი', sp.ip)}
+        ${row('სამონტაჟო სიმაღლე', mount)}
+        ${row('მდებარეობა', `X ${f.x.toFixed(3)} · Z ${f.z.toFixed(3)} მ${lin ? `<br>სხივი ${f.rayAngle}°, ცენტრიდან ${f.r.toFixed(2)} მ` : ''}`)}
+        ${row('განათებულობა (lux)', '<span class="sub">არ ითვლება — IES/LDT ფაილი არ არის; ვიზუალიზაცია მიახლოებითია</span>')}
+        ${row('შუქის სტატუსი', '<span id="lc-state"></span>')}
+      </table>
+    </div>
+    <div class="lpane" data-pane="scheme" hidden>
+      <div class="sch-sheets" id="sch-sheets"></div>
+      <div class="sch-stage" id="sch-stage"><img id="sch-img" alt="" draggable="false"><div class="dmark" id="sch-mark" hidden></div><div class="dring" id="sch-ring" hidden></div><div class="dwg-msg" id="sch-msg"></div></div>
+      <div class="sch-tools"><button type="button" class="dwg-btn" id="sch-out" aria-label="დაშორება">−</button><button type="button" class="dwg-btn" id="sch-fit" aria-label="მთლიანი ფურცელი"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button><button type="button" class="dwg-btn" id="sch-in" aria-label="მიახლოება">+</button><button type="button" class="btn" id="sch-full">სრულ ეკრანზე</button></div>
+    </div>`;
+}
+function updateLumCard() {
+  const a = document.getElementById('lc-cct'), b = document.getElementById('lc-state');
+  if (a) a.innerHTML = `${cct} K <span class="badge asm">ვიზუალური სიმულაცია</span>`;
+  if (b) b.innerHTML = lightsOn ? '<span class="badge ok">ჩართული</span>' : '<span class="badge asm">გამორთული</span>';
 }
 
 const STATUS = {
@@ -482,10 +652,20 @@ const STATUS = {
 function select(obj) {
   selected = obj;
   const card = $('#info');
-  if (!obj) { focused = null; selHelper.visible = false; card.hidden = true; needsRender = true; return; }
-  selBox.setFromObject(obj);
-  selHelper.visible = true;
+  if (!obj) { focused = null; selHelper.visible = false; selOutline.visible = false; card.hidden = true; needsRender = true; return; }
   const inf = obj.userData.info;
+  if (inf.mark) { selHelper.visible = false; outlineObject(obj); }
+  else { selOutline.visible = false; selBox.setFromObject(obj); selHelper.visible = true; }
+  card.classList.toggle('lum', !!inf.lum);
+  if (inf.lum) {
+    $('#info-body').innerHTML = lumCardHtml(inf);
+    updateLumCard();
+    card.hidden = false;
+    curDrawings = drawingsFor(inf);
+    $('#info-drawing').hidden = !curDrawings.length;
+    needsRender = true;
+    return;
+  }
   const rows = Object.entries(inf.size || {}).map(([k, v]) => {
     const st = inf.status?.[k] || 'pdf';
     const [txt, cls] = STATUS[st] || STATUS.pdf;
@@ -559,7 +739,33 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 function setActiveView(name) {
   document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
 }
-const layerTargets = { ceiling: groups.ceiling, exterior: groups.exterior, furniture: groups.furniture, dims, nav: groups.navigation };
+const layerTargets = { ceiling: groups.ceiling, exterior: groups.exterior, furniture: groups.furniture, dims, nav: groups.navigation, lighting: groups.lighting, vents: groups.vents, hatches: groups.hatches };
+// შუქის ჩართვა/გამორთვა — დამოუკიდებელია განათების სისტემის ხილვადობისგან და ნავიგაციის განათებისგან
+function setLightsOn(on) {
+  lightsOn = on;
+  $('#lights-on').setAttribute('aria-pressed', String(on));
+  $('#cct').classList.toggle('off', !on);
+  applyLighting();
+}
+$('#lights-on').addEventListener('click', () => setLightsOn(!lightsOn));
+// ფერის ტემპერატურის ბარი (2700–6500 K, ბიჯი 100) — ვიზუალური სიმულაცია
+function setCct(k) {
+  cct = THREE.MathUtils.clamp(Math.round(k / SIM.cctStep) * SIM.cctStep, SIM.cctMin, SIM.cctMax);
+  $('#cct-range').value = String(cct);
+  $('#cct-val').textContent = `${cct} K`;
+  $('#cct-range').style.setProperty('--p', `${((cct - SIM.cctMin) / (SIM.cctMax - SIM.cctMin)) * 100}%`);
+  $('#cct-reset').disabled = cct === SIM.cctDefault;
+  applyLighting();
+}
+$('#cct-range').addEventListener('input', (e) => setCct(+e.target.value));
+$('#cct-minus').addEventListener('click', () => setCct(cct - SIM.cctStep));
+$('#cct-plus').addEventListener('click', () => setCct(cct + SIM.cctStep));
+$('#cct-reset').addEventListener('click', () => setCct(SIM.cctDefault));
+$('#cct-collapse').addEventListener('click', () => {
+  const c = $('#cct').classList.toggle('collapsed');
+  $('#cct-collapse').setAttribute('aria-expanded', String(!c));
+});
+if (rigSimplified) $('#cct').title = 'ამ მოწყობილობაზე სინათლის წყაროები გამარტივებულად (ჯგუფებად) ითვლება — ნაკადი იგივეა.';
 // ნავიგაციის განათება — მომხმარებლის ბოლო არჩევანი ინახება, როცა ნავიგაცია დამალულია
 let navLightOn = true;
 function setNavLight(on) {
@@ -598,7 +804,20 @@ const dwg = { el: $('#dwg'), stage: $('#dwg-stage'), img: $('#dwg-img'), msg: $(
 $('#dwg-hint').textContent = coarse
   ? 'ორი თითი — ზუმი · ერთი თითი — გადაადგილება · ორმაგი შეხება — მიახლოება / მთლიანი ფურცელი'
   : 'ბორბალი — ზუმი · გადათრევა — გადაადგილება · ორჯერ დაჭერა — მიახლოება / მთლიანი ფურცელი · ← → — გვერდები · Esc — დახურვა';
-const dwgApply = () => { dwg.img.style.transform = `translate(${dwg.x}px, ${dwg.y}px) scale(${dwg.s})`; };
+// ნახაზზე არჩეული ობიექტის მონიშვნა (მართკუთხედი/წრე + პულსირებადი რგოლი) — მოძრაობს სურათთან ერთად
+function placeMark(markEl, ringEl, m, x, y, s) {
+  if (!markEl || !ringEl) return;
+  if (!m) { markEl.hidden = ringEl.hidden = true; return; }
+  const cx = x + m.px * s, cy = y + m.py * s, w = Math.max(10, m.w * s), h = Math.max(6, m.h * s);
+  Object.assign(markEl.style, { left: `${cx - w / 2}px`, top: `${cy - h / 2}px`, width: `${w}px`, height: `${h}px`, transform: `rotate(${m.ang}deg)`, borderRadius: m.round ? '50%' : '3px' });
+  ringEl.style.left = `${cx}px`;
+  ringEl.style.top = `${cy}px`;
+  markEl.hidden = ringEl.hidden = false;
+}
+const dwgApply = () => {
+  dwg.img.style.transform = `translate(${dwg.x}px, ${dwg.y}px) scale(${dwg.s})`;
+  placeMark($('#dwg-mark'), $('#dwg-ring'), dwg.loaded ? dwg.mark : null, dwg.x, dwg.y, dwg.s);
+};
 function dwgFit() {
   const W = dwg.stage.clientWidth, H = dwg.stage.clientHeight, iw = dwg.img.naturalWidth, ih = dwg.img.naturalHeight;
   if (!iw || !W) return;
@@ -626,7 +845,14 @@ function dwgShow(i) {
   $('#dwg-open').href = src;
   dwg.msg.textContent = 'ნახაზი იტვირთება…';
   dwg.img.style.visibility = 'hidden';
-  dwg.img.onload = () => { dwg.msg.textContent = ''; dwg.img.style.visibility = ''; dwgFit(); };
+  dwg.mark = markPx(selected?.userData.info?.mark, d.id);
+  dwg.loaded = false;
+  dwgApply();
+  dwg.img.onload = () => {
+    dwg.msg.textContent = ''; dwg.img.style.visibility = ''; dwg.loaded = true; dwgFit();
+    // მონიშნული ობიექტი — ეკრანის ცენტრში, წასაკითხ მასშტაბზე
+    if (dwg.mark) { const W = dwg.stage.clientWidth, H = dwg.stage.clientHeight, sc = Math.max(dwg.fitS, 0.55); dwg.s = sc; dwg.x = W / 2 - dwg.mark.px * sc; dwg.y = H / 2 - dwg.mark.py * sc; dwgApply(); }
+  };
   dwg.img.onerror = () => {
     dwg.msg.textContent = `ნახაზის ფაილი ვერ ჩაიტვირთა (${src}). branch-viewer.html-თან ერთად უნდა იყოს საქაღალდე „drawings“.`;
   };
@@ -645,6 +871,106 @@ function dwgOpen() {
   dwgShow(0);
 }
 function dwgClose() { dwg.el.hidden = true; }
+
+// ---- სქემის მინი-მნახველი ბარათში (ზუმი, გადაადგილება, მონიშვნა)
+const sch = { s: 1, x: 0, y: 0, fitS: 1, mark: null, ids: [], i: 0, loaded: false };
+const schEl = (id) => document.getElementById(id);
+function schApply() {
+  const img = schEl('sch-img');
+  if (!img) return;
+  img.style.transform = `translate(${sch.x}px, ${sch.y}px) scale(${sch.s})`;
+  placeMark(schEl('sch-mark'), schEl('sch-ring'), sch.loaded ? sch.mark : null, sch.x, sch.y, sch.s);
+}
+function schZoom(f, cx, cy) {
+  const st = schEl('sch-stage');
+  if (!st) return;
+  if (cx === undefined) { cx = st.clientWidth / 2; cy = st.clientHeight / 2; }
+  const ns = THREE.MathUtils.clamp(sch.s * f, sch.fitS * 0.8, 2.5), k = ns / sch.s;
+  sch.x = cx - (cx - sch.x) * k; sch.y = cy - (cy - sch.y) * k; sch.s = ns;
+  schApply();
+}
+function schFit(focus) {
+  const st = schEl('sch-stage'), img = schEl('sch-img');
+  if (!st || !img?.naturalWidth) return;
+  const W = st.clientWidth, H = st.clientHeight, iw = img.naturalWidth, ih = img.naturalHeight;
+  sch.fitS = Math.min(W / iw, H / ih);
+  if (focus && sch.mark) { sch.s = 0.3; sch.x = W / 2 - sch.mark.px * sch.s; sch.y = H / 2 - sch.mark.py * sch.s; }
+  else { sch.s = sch.fitS; sch.x = (W - iw * sch.s) / 2; sch.y = (H - ih * sch.s) / 2; }
+  schApply();
+}
+function schShow(i) {
+  const inf = selected?.userData.info;
+  if (!inf) return;
+  sch.i = i;
+  const list = drawingsFor(inf), id = sch.ids[i], d = list.find((q) => q.id === id);
+  schEl('sch-sheets').innerHTML = sch.ids.map((q, k) => `<button type="button" data-i="${k}" class="${k === i ? 'active' : ''}">${list.find((z) => z.id === q)?.sheet || q}</button>`).join('') + `<span>${d?.title || ''}</span>`;
+  const img = schEl('sch-img'), msg = schEl('sch-msg');
+  sch.mark = markPx(inf.mark, id);
+  sch.loaded = false;
+  img.style.visibility = 'hidden';
+  msg.textContent = 'ნახაზი იტვირთება…';
+  schApply();
+  img.onload = () => { msg.textContent = ''; img.style.visibility = ''; sch.loaded = true; schFit(true); };
+  img.onerror = () => { msg.textContent = 'ნახაზის ფაილი ვერ ჩაიტვირთა (საქაღალდე „drawings“).'; };
+  img.src = DWG_DIR + id + '.webp';
+}
+function schOpen() {
+  const inf = selected?.userData.info;
+  if (!inf?.lum) return;
+  sch.ids = (inf.drawings || []).filter((id) => DWG_BY_SHEET[id]);
+  schShow(0);
+}
+$('#info-body').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-tab]');
+  if (t) {
+    document.querySelectorAll('#info-body .ltab').forEach((b) => b.classList.toggle('active', b === t));
+    document.querySelectorAll('#info-body .lpane').forEach((p) => { p.hidden = p.dataset.pane !== t.dataset.tab; });
+    if (t.dataset.tab === 'scheme') schOpen();
+    return;
+  }
+  const sb = e.target.closest('#sch-sheets button');
+  if (sb) { schShow(+sb.dataset.i); return; }
+  if (e.target.closest('#sch-in')) schZoom(1.4);
+  else if (e.target.closest('#sch-out')) schZoom(1 / 1.4);
+  else if (e.target.closest('#sch-fit')) schFit(false);
+  else if (e.target.closest('#sch-full')) { dwgOpen(); const k = curDrawings.findIndex((q) => q.id === sch.ids[sch.i]); if (k > 0) dwgShow(k); }
+});
+{
+  // მინი-მნახველი: ბორბალი, გადათრევა, ორი თითი
+  const body = $('#info-body');
+  body.addEventListener('wheel', (e) => {
+    const st = e.target.closest('#sch-stage');
+    if (!st) return;
+    e.preventDefault();
+    const r = st.getBoundingClientRect();
+    schZoom(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
+  }, { passive: false });
+  const ptrs = new Map();
+  let pinch = null;
+  body.addEventListener('pointerdown', (e) => {
+    const st = e.target.closest('#sch-stage');
+    if (!st) return;
+    st.setPointerCapture?.(e.pointerId);
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: sch.s }; }
+  });
+  body.addEventListener('pointermove', (e) => {
+    const p = ptrs.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (ptrs.size === 1 && !pinch) { sch.x += dx; sch.y += dy; schApply(); }
+    else if (ptrs.size === 2 && pinch) {
+      const [a, b] = [...ptrs.values()], r = schEl('sch-stage').getBoundingClientRect();
+      schZoom((pinch.s * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d) / sch.s, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
+    }
+  });
+  const up = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; };
+  body.addEventListener('pointerup', up);
+  body.addEventListener('pointercancel', up);
+}
+// Esc — ბარათის დახურვა (როცა ნახაზის მნახველი არ არის გახსნილი)
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && dwg.el.hidden && selected) select(null); });
 $('#info-drawing').addEventListener('click', dwgOpen);
 $('#dwg-close').addEventListener('click', dwgClose);
 $('#dwg-in').addEventListener('click', () => dwgZoom(1.4));
@@ -820,6 +1146,11 @@ setLayer('furniture', true);
 setLayer('dims', false);
 setLayer('nav', true);
 setNavLight(true);
+setLayer('lighting', true);
+setLayer('vents', true);
+setLayer('hatches', true);
+setCct(SIM.cctDefault);
+setLightsOn(true);
 
 // კონტაქტური ჩრდილები (AO) ითვლება მხოლოდ მაშინ, როცა კამერა გაჩერებულია —
 // ტრიალი და ზუმი ამიტომ რჩება რბილი სუსტ მოწყობილობებზეც.
@@ -851,6 +1182,6 @@ requestAnimationFrame(loop);
 
 // შემოწმებისთვის (კონსოლიდან)
 window.__branch = {
-  THREE, scene, root, groups, renderer, get composer() { return composer; }, get camera() { return camera; }, get controls() { return controls; }, setView, setLayer, setNavLight, get navLightOn() { return navLightOn; }, select, focusOn, pick, zoomBy, dwgOpen, dwgState: () => ({ ...dwg, el: undefined, stage: undefined, img: undefined, msg: undefined, natural: [dwg.img.naturalWidth, dwg.img.naturalHeight] }), setAutoCenter, get autoCenter() { return autoCenter; },
+  THREE, scene, root, groups, renderer, get composer() { return composer; }, get camera() { return camera; }, get controls() { return controls; }, setView, setLayer, setNavLight, get navLightOn() { return navLightOn; }, select, focusOn, pick, zoomBy, dwgOpen, dwgState: () => ({ ...dwg, el: undefined, stage: undefined, img: undefined, msg: undefined, natural: [dwg.img.naturalWidth, dwg.img.naturalHeight] }), setAutoCenter, get autoCenter() { return autoCenter; }, lightRig, setLightsOn, setCct, get lightsOn() { return lightsOn; }, get cct() { return cct; }, cctColor, rigSimplified, schState: () => ({ ...sch }),
   capture() { controls.update(); if (aoPass) aoPass.enabled = true; composer.render(); return renderer.domElement.toDataURL("image/png"); },
 };
